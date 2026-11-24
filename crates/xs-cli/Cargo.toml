@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-cli"
+version = "0.1.0"
+description = "xiaolishaxiang 命令行前端"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[dependencies]
+xs-core = { path = "../xs-core" }
+xs-api = { path = "../xs-api" }
+
+# 本 crate 必须保持 #![forbid(unsafe_code)]。

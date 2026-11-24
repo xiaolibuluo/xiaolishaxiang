@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-l3-rt"
+version = "0.1.0"
+description = "xiaolishaxiang L3 运行时隔离层：WASM 沙箱与能力句柄表"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[dependencies]
+xs-core = { path = "../xs-core" }
+wasmtime = "51"
+
+# wasmtime 51 已正式引入（M4 落地），其版本升级需独立审查并复跑对抗逃逸语料（见 docs/05-SUPPLY-CHAIN.md）。
+# 本 crate 必须保持 #![forbid(unsafe_code)]。
+
+[dev-dependencies]

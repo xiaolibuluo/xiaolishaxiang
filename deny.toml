@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+# cargo-deny 配置（docs/05-SUPPLY-CHAIN.md 第 1、2、3 节）。
+
+[licenses]
+version = 2
+# 项目本体为 AGPL-3.0-only；依赖许可必须与 AGPL-3.0 兼容。
+# 白名单只保留当前依赖树中实际出现的许可证（避免 not-encountered 警告噪音）；
+# 新依赖引入其他 AGPL 兼容许可时再按评估结果扩充。
+allow = [
+    "AGPL-3.0-only",
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+]
+confidence-threshold = 0.8
+
+# 需要时对许可识别不清的 crate 用 [[licenses.clarify]] 显式澄清（附理由）。
+
+[bans]
+# 禁止同一依赖的多个版本（供应链纪律）。
+multiple-versions = "warn"
+highlight = "all"
+
+# 确需保留的重复版本用 [[bans.skip]] 显式豁免（附理由与过期日期）。
+
+# serde_derive 1.0.229 同时依赖 syn 2 与 syn 3 两代宏生态，属上游既定事实，
+# 项目自身无法消除；豁免至 2026-12-31，届时随 serde 升级复查。
+[[bans.skip]]
+crate = "syn"
+version = "=2.0.119"
+reason = "serde_derive 1.0.229 同时依赖 syn 2 与 syn 3 两代宏生态，上游既定事实；复查期限 2026-12-31"
+
+[[bans.skip]]
+crate = "syn"
+version = "=3.0.10"
+reason = "serde_derive 1.0.229 同时依赖 syn 2 与 syn 3 两代宏生态，上游既定事实；复查期限 2026-12-31"
+
+[advisories]
+version = 2
+# 漏洞扫描主体在 Scheduled 级（cargo-audit + osv-scanner 带豁免过期），
+# 此处保留 advisories 检查框架供 Blocker 快速通道使用。
+ignore = []
+
+[sources]
+# 只允许 crates.io 官方源；git / 私有源引入需显式声明并审查。
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

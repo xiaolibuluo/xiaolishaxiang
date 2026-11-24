@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+# xs-core fuzz workspace（M3 Required：fuzz 冒烟，docs/04-TEST-MATRIX.md）。
+# 独立于主 workspace：libfuzzer-sys 仅用于 fuzz 构建，不污染主依赖树。
+
+[package]
+name = "xs-core-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+xs-core = { path = ".." }
+
+[[bin]]
+name = "fuzz_config_parse"
+path = "fuzz_targets/fuzz_config_parse.rs"
+test = false
+doc = false
+
+# 独立于主 workspace：避免 libfuzzer-sys 进入主依赖树、避免 fuzz 构建参数
+# （sancov/ASan）泄漏到 Blocker 门禁的正常构建。
+[workspace]

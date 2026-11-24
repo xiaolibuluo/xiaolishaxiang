@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-l1-sys"
+version = "0.1.0"
+description = "xiaolishaxiang L1 系统隔离层：namespace + seccomp + landlock + netns（Linux 专用）"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[dependencies]
+xs-core = { path = "../xs-core" }
+libc = "0.2"
+
+# 注意：本 crate 是唯一允许 unsafe 的业务 crate（syscall / libc 交互）。
+# 每条 unsafe 块必须附安全论证注释，M3 起作为 Required 门禁人工核查项。

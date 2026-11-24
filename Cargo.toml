@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+# xiaolishaxiang workspace 根配置
+# 注意：各成员 crate 的 Cargo.toml 必须从第一个 commit 起写入 rust-version（对外 MSRV），
+# 与 rust-toolchain.toml 锁定的 1.100.0（贡献者/CI 环境）是两个不同概念。
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/xs-core",
+    "crates/xs-l1-sys",
+    "crates/xs-l2-res",
+    "crates/xs-l3-rt",
+    "crates/xs-api",
+    "crates/xs-cli",
+]
+
+[workspace.package]
+edition = "2021"
+license = "AGPL-3.0-only"
+# repository 字段在发布 crates.io 前统一加入并让成员继承（避免未继承产生的 manifest 警告）
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+toml = "0.8"

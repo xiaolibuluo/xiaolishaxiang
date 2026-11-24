@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+# xiaolishaxiang soak 定时流水线服务单元（docs/04-TEST-MATRIX.md 第 3 级 Scheduled）。
+# 安装：cp ci/systemd/xiaolishaxiang-soak.service /etc/systemd/system/
+#       cp ci/systemd/xiaolishaxiang-soak.timer /etc/systemd/system/
+#       systemctl daemon-reload && systemctl enable --now xiaolishaxiang-soak.timer
+
+[Unit]
+Description=xiaolishaxiang soak persistent stability test (Scheduled, >=24h)
+Documentation=file:/root/xiaolishaxiang/docs/04-TEST-MATRIX.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/xiaolishaxiang
+Environment=PATH=/root/.cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=/root/xiaolishaxiang/ci/run_soak.sh
+# 24h soak + 构建余量；超时即失败（Scheduled 阻断发布语义）
+TimeoutStartSec=90000
+# 产物由脚本自行落在 artifacts/soak/，日志进 journal（journalctl -u ...）
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=xiaolishaxiang-soak

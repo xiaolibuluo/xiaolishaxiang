@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-core"
+version = "0.1.0"
+description = "xiaolishaxiang 核心：三层 trait、错误模型、配置、能力探测类型、审计日志"
+license.workspace = true
+edition.workspace = true
+# 对外承诺的 MSRV，与 rust-toolchain.toml 锁定的 1.100.0（贡献者/CI 环境）是两个概念
+rust-version = "1.85"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+tracing = { workspace = true }
+toml = { workspace = true }

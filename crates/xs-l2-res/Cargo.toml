@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-l2-res"
+version = "0.1.0"
+description = "xiaolishaxiang L2 资源治理层：cgroup v2 / rlimit / 背压"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[lints.rust]
+# tests/loom_backpressure.rs 以 --cfg loom 启用（docs/04-TEST-MATRIX.md 第 2 级 Required）
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }
+
+[dependencies]
+# xs-core 依赖在 M2 实现 cgroup 治理时引入（骨架期暂不使用，移除以保持零警告基线）
+
+# 本 crate 必须保持 #![forbid(unsafe_code)]；任何 unsafe 需求只能进入 xs-l1-sys。
+
+[dev-dependencies]
+# M2 Required：loom 并发模型检查（仅测试期依赖，不进入产物）
+loom = "0.7"

@@ -1,0 +1,103 @@
+# libFuzzer 字典：fuzz_config_parse（xs-core 配置解析器）
+# 覆盖 SandboxConfig TOML 关键字段与取值关键词，加速结构感知变异。
+# 维护纪律：新增配置字段时同步补充对应关键词。
+
+# ---- TOML 语法骨架 ----
+"[quota]"
+"[capabilities]"
+"[network_allow]"
+"[syscall]"
+"[filesystem]"
+"key=\"value\""
+"=true"
+"=false"
+"=0"
+"=1"
+"=-1"
+"[]"
+"[[]]"
+"\"\""
+
+# ---- 通用字段名 ----
+"quota"
+"capabilities"
+"min_assurance"
+"network_allow"
+"cpu"
+"memory"
+"memory_bytes"
+"pids"
+"wall_time"
+"wall_time_secs"
+"timeout"
+"timeout_secs"
+"io"
+"max_files"
+"max_processes"
+
+# ---- capabilities 取值 ----
+"cap_sys_admin"
+"cap_net_admin"
+"cap_sys_ptrace"
+"cap_dac_override"
+"cap_setuid"
+"cap_setgid"
+"cap_chown"
+"cap_kill"
+"cap_net_raw"
+"cap_sys_module"
+
+# ---- min_assurance 等级 ----
+"assurance"
+"L1"
+"L2"
+"L3"
+"minimal"
+"standard"
+"strict"
+
+# ---- network 策略 ----
+"allow"
+"deny"
+"localhost"
+"127.0.0.1"
+"::1"
+"0.0.0.0"
+"cidr"
+"port"
+"protocol"
+"tcp"
+"udp"
+"icmp"
+
+# ---- syscall 过滤 ----
+"io_uring"
+"io_uring_setup"
+"io_uring_enter"
+"io_uring_register"
+"ptrace"
+"seccomp"
+"landlock"
+"deny_list"
+"allow_list"
+
+# ---- filesystem / 路径 ----
+"rootfs"
+"workspace"
+"readonly"
+"read_only"
+"bind"
+"tmpfs"
+"/proc"
+"/sys"
+"/dev"
+"/tmp"
+
+# ---- 边界/异常诱导值 ----
+"9223372036854775807"
+"18446744073709551615"
+"0x7fffffffffffffff"
+"\xf0\x9f\x92\xa9"
+"%s%s%s%s"
+"../../etc/passwd"
+"\x00"

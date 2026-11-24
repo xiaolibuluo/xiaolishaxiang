@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-api"
+version = "0.1.0"
+description = "xiaolishaxiang 对外门面 API：对上层（CLI / 嵌入方）暴露统一入口"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[dependencies]
+xs-core = { path = "../xs-core" }
+xs-l1-sys = { path = "../xs-l1-sys" }
+
+# 门面 crate 只做组合与 re-export，禁止 unsafe。

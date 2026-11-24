@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+# xiaolishaxiang 长程 fuzz 定时触发单元（docs/04-TEST-MATRIX.md 第 3 级 Scheduled）。
+# 每日 05:00 触发 1h fuzz（与 soak 03:00 错峰，避免 CPU 争用）；
+# Persistent=true 补跑停机期间错过的调度。
+[Unit]
+Description=xiaolishaxiang fuzz timer (daily 05:00)
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+[Install]
+WantedBy=timers.target

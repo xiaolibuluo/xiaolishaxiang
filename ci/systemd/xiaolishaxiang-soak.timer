@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+# xiaolishaxiang soak 定时触发单元（docs/04-TEST-MATRIX.md 第 3 级 Scheduled）。
+# 每日 03:00 触发一次 24h soak；Persistent=true 补跑停机期间错过的调度。
+
+[Unit]
+Description=xiaolishaxiang soak timer (daily 03:00)
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
