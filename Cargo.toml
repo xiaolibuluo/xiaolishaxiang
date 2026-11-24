@@ -18,7 +18,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.0.3-dev"
+version = "1.0.4-dev"
 edition = "2021"
 license = "AGPL-3.0-only"
 # repository 字段在发布 crates.io 前统一加入并让成员继承（避免未继承产生的 manifest 警告）
