@@ -13,5 +13,6 @@ rust-version = "1.85"
 [dependencies]
 xs-core = { path = "../xs-core" }
 xs-api = { path = "../xs-api" }
+serde_json = "1"
 
 # 本 crate 必须保持 #![forbid(unsafe_code)]。

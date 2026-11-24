@@ -7,6 +7,7 @@
 //! 子命令：
 //!   xs-cli check <config.toml>          解析并验证配置，输出能力探测结果。
 //!   xs-cli run <config.toml> <cmd...>   在沙箱内运行命令。
+//!   xs-cli health                        沙箱健康检查探针（输出 JSON）。
 //!
 //! 退出码遵循 fail-closed：任何失败都以非零码退出。
 
@@ -19,12 +20,26 @@ use xs_core::SandboxConfig;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!(
+            "用法: {} <check|run|health> [config.toml] [cmd...]",
+            args[0]
+        );
+        return ExitCode::from(2);
+    }
+
+    let sub = &args[1];
+
+    // health 子命令不需要配置文件
+    if sub == "health" {
+        return cmd_health();
+    }
+
     if args.len() < 3 {
         eprintln!("用法: {} <check|run> <config.toml> [cmd...]", args[0]);
         return ExitCode::from(2);
     }
 
-    let sub = &args[1];
     let config_path = &args[2];
 
     let text = match std::fs::read_to_string(config_path) {
@@ -55,7 +70,10 @@ fn main() -> ExitCode {
         }
         other => {
             eprintln!("未知子命令: {other}");
-            eprintln!("用法: {} <check|run> <config.toml> [cmd...]", args[0]);
+            eprintln!(
+                "用法: {} <check|run|health> [config.toml] [cmd...]",
+                args[0]
+            );
             ExitCode::from(2)
         }
     }
@@ -133,5 +151,18 @@ fn cmd_run(cfg: &SandboxConfig, cmd_args: &[String]) -> ExitCode {
             eprintln!("沙箱执行失败: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// 沙箱健康检查探针：执行一次完整的隔离生命周期并输出 JSON 指标。
+/// 退出码：0 = sandbox_ok，1 = 沙箱不可用。
+fn cmd_health() -> ExitCode {
+    let report = xs_api::health();
+    let json = serde_json::to_string(&report).unwrap_or_else(|_| "{}".to_string());
+    println!("{json}");
+    if report.sandbox_ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
