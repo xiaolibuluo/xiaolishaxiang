@@ -4,7 +4,7 @@
 
 [package]
 name = "xs-l2-res"
-version = "0.1.0"
+version = { workspace = true }
 description = "xiaolishaxiang L2 资源治理层：cgroup v2 / rlimit / 背压"
 license.workspace = true
 edition.workspace = true

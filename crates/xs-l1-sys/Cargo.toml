@@ -4,7 +4,7 @@
 
 [package]
 name = "xs-l1-sys"
-version = "0.1.0"
+version = { workspace = true }
 description = "xiaolishaxiang L1 系统隔离层：namespace + seccomp + landlock + netns（Linux 专用）"
 license.workspace = true
 edition.workspace = true

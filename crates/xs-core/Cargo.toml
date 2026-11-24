@@ -4,7 +4,7 @@
 
 [package]
 name = "xs-core"
-version = "0.1.0"
+version = { workspace = true }
 description = "xiaolishaxiang 核心：三层 trait、错误模型、配置、能力探测类型、审计日志"
 license.workspace = true
 edition.workspace = true

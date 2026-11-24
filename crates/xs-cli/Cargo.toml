@@ -4,7 +4,7 @@
 
 [package]
 name = "xs-cli"
-version = "0.1.0"
+version = { workspace = true }
 description = "xiaolishaxiang 命令行前端"
 license.workspace = true
 edition.workspace = true

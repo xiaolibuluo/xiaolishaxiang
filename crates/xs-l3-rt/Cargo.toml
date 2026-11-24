@@ -4,7 +4,7 @@
 
 [package]
 name = "xs-l3-rt"
-version = "0.1.0"
+version = { workspace = true }
 description = "xiaolishaxiang L3 运行时隔离层：WASM 沙箱与能力句柄表"
 license.workspace = true
 edition.workspace = true
