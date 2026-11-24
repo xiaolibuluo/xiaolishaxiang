@@ -13,5 +13,6 @@ rust-version = "1.85"
 [dependencies]
 xs-core = { path = "../xs-core" }
 xs-l1-sys = { path = "../xs-l1-sys" }
+serde = { version = "1", features = ["derive"] }
 
 # 门面 crate 只做组合与 re-export，禁止 unsafe。

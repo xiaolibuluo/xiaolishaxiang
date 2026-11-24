@@ -10,8 +10,10 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
+pub mod health;
 pub mod sandbox;
 
+pub use health::{health, HealthReport};
 pub use sandbox::{build, Sandbox};
 pub use xs_core::{
     AssuranceLevel, CapabilityReport, CapabilitySet, LandlockAbi, ResourceQuota, SandboxConfig,
