@@ -6,7 +6,11 @@
 
 #![allow(clippy::result_large_err)]
 
-/// proto 生成的 gRPC 代码（由 build.rs 编译 proto/xiaolishaxiang/v1/scheduler.proto）。
+pub mod allocate;
+pub mod node;
+pub mod service;
+
+/// proto 生成的 gRPC 代码（由 build.rs 编译 proto/xiaolishaxiang/v1/sandbox.proto + scheduler.proto）。
 pub mod scheduler_proto {
     tonic::include_proto!("xiaolishaxiang.v1");
 }
