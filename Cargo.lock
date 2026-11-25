@@ -2661,7 +2661,11 @@ dependencies = [
 name = "xs-cli"
 version = "1.0.11-dev"
 dependencies = [
+ "prost",
  "serde_json",
+ "tokio",
+ "tonic",
+ "tonic-build",
  "xs-api",
  "xs-core",
 ]
