@@ -184,3 +184,51 @@ fn fault_nonzero_exit_code_passthrough() {
         "沙箱退出码必须如实透传给 supervisor"
     );
 }
+
+// ------------------------------------------------------------------ DEFECT-2026-02 回归
+
+/// DEFECT-2026-02 回归：seccomp allowlist 缺失 fcntl/poll/getcwd 导致动态链接
+/// 二进制（coreutils 经 libselinux 启动期 fd 健全性检查）在沙箱内 exec 成功后
+/// 自触发 SIGABRT 崩溃（strace 实证：fcntl(0/1/2, F_GETFD) 与 poll(stdin/out/err,
+/// events=0) 被默认 ERRNO(EPERM) 拒绝 → /bin/echo 启动即 abort）。
+///
+/// 修复：sandbox_minimal() 补充 SYS_fcntl / SYS_poll / SYS_getcwd（均为只读元数据
+/// 操作，不触碰路径与提权面）。本用例断言动态链接二进制可正常执行且退出码为 0，
+/// 防止后续重构 allowlist 时再次删除这三个 syscall 导致回归。
+#[test]
+fn defect_2026_02_dynamically_linked_binary_runs_without_sigabrt() {
+    let _guard = SPAWN_TEST_LOCK.lock().unwrap();
+    let Some(domain) = require_domain_with_sh() else {
+        return;
+    };
+    let pid = domain
+        .spawn(&cmd("/bin/echo", &["defect-2026-02"]))
+        .expect("spawn 应成功");
+    let status = domain.wait(pid).expect("wait 应成功");
+    assert_eq!(
+        status,
+        ExitStatus::Exited(0),
+        "动态链接二进制（coreutils）必须正常执行（exit 0），不得 SIGABRT；\
+         若此断言失败，说明 seccomp allowlist 缺失 fcntl/poll/getcwd（DEFECT-2026-02 回归）"
+    );
+}
+
+/// DEFECT-2026-02 回归（sh 变体）：/bin/sh 启动期 getcwd() 查询被默认拒绝时打印
+/// 'getcwd() failed: Operation not permitted' 警告噪音。补充 SYS_getcwd 后 sh 启动
+/// 无警告输出。本用例断言 sh -c 正常执行且退出码正确。
+#[test]
+fn defect_2026_02_sh_startup_no_getcwd_warning() {
+    let _guard = SPAWN_TEST_LOCK.lock().unwrap();
+    let Some(domain) = require_domain_with_sh() else {
+        return;
+    };
+    let pid = domain
+        .spawn(&cmd("/bin/sh", &["-c", "exit 0"]))
+        .expect("spawn 应成功");
+    let status = domain.wait(pid).expect("wait 应成功");
+    assert_eq!(
+        status,
+        ExitStatus::Exited(0),
+        "/bin/sh 启动不得因 getcwd 被拒产生警告噪音（DEFECT-2026-02 回归）"
+    );
+}

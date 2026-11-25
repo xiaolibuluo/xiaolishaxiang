@@ -20,6 +20,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 | 编号 | 发现里程碑 | SP-ID | 缺陷摘要 | 修复变更 ID | 回归用例位置 | 验证状态 |
 |---|---|---|---|---|---|---|
 | DEFECT-2026-01 | M3 | SP-L3-01 | 能力句柄范围校验使用朴素 starts_with，允许 `/data/../etc/passwd` 路径穿越与 `/database` 前缀混淆两类对抗输入被误放行（fail-open），违反 fail-closed 规约 | file-change-d21d566d-aebb-4f17-9c41-308be1ea854d（handle.rs check_use 加固） | crates/xs-l3-rt/tests/l3_adversarial_handles.rs（sp_l3_01_scope_traversal_rejected / sp_l3_01_scope_prefix_confusion_rejected / sp_l3_01_scope_escape_rejected） | ✅ 7/7 用例全绿，已入 Blocker 门禁 |
+| DEFECT-2026-02 | P5 深度打磨 | SP-L1-03 | seccomp allowlist 缺失 fcntl/poll/getcwd：Ubuntu coreutils 经 libselinux 启动期调用 fcntl(0/1/2, F_GETFD) 与 poll(stdin/out/err, events=0) 检查 fd 状态，被默认 ERRNO(EPERM) 拒绝后进程自触发 SIGABRT（/bin/echo exec 成功即 abort）；/bin/sh 启动期 getcwd() 被拒产生警告噪音。属策略缺陷而非代码逻辑缺陷——隔离强度未受影响但『可运行常规命令』的产品承诺不成立 | file-change-1f7bef8f（filter.rs 补 fcntl/poll）+ file-change-ff16f5ae（补 getcwd） | crates/xs-l1-sys/tests/fault_crash.rs（defect_2026_02_dynamically_linked_binary_runs_without_sigabrt / defect_2026_02_sh_startup_no_getcwd_warning） | ✅ 2 用例全绿 + L1 全量对抗 20 用例全绿（io_uring 阻断/ptrace 阻断/网络双防线/路径隔离无回归） |
 
 ## 维护纪律
 

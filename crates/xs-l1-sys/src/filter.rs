@@ -128,6 +128,16 @@ impl SeccompAllowlist {
             // 跨进程信号面由 PID namespace 边界约束（SP-L1-06）。
             libc::SYS_kill as u32,
             libc::SYS_tgkill as u32,
+            // stdio fd 健全性查询（strace 实证，2026-11-25）：Ubuntu coreutils 经 libselinux
+            // 启动期调用 fcntl(0/1/2, F_GETFD) 与 poll(stdin/out/err, events=0) 检查 fd 状态，
+            // 被默认 ERRNO(EPERM) 拒绝后进程自触发 SIGABRT（/bin/echo hello 实测复现）。
+            // 两者均为只读元数据操作，不碰路径与提权面（no_new_privs 已阻断提权）。
+            libc::SYS_fcntl as u32,
+            libc::SYS_poll as u32,
+            // 当前工作目录查询（同批 strace 实证）：/bin/sh 启动期调用 getcwd()，
+            // 缺失时打印 'getcwd() failed: Operation not permitted' 警告噪音（不影响功能）。
+            // 纯只读返回内核已知 cwd 字符串，不触碰路径授权面（路径面归 landlock）。
+            libc::SYS_getcwd as u32,
         ];
         Self { allowed }
     }
