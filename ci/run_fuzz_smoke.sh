@@ -10,9 +10,19 @@
 
 set -euo pipefail
 
+# systemd 环境默认不导出 HOME（2026-11-25 05:00 首次触发实证：set -u 下
+# $HOME 展开触发 'unbound variable' 直接退出 1）。先按 EUID 兜底再使用。
+HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+export HOME
+
 # systemd 环境 PATH 默认为 /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin，
 # 不含 ~/.cargo/bin（rustup/cargo），手动注入以确保 cargo +nightly 可找到。
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# GitHub 不可达环境（firewalla 后）下 rustup 校验 nightly 工具链组件会超时；
+# 指向实测最快镜像（腾讯云 0.076s），保证长程任务可稳定拉起。
+export RUSTUP_DIST_SERVER="${RUSTUP_DIST_SERVER:-https://mirrors.tencentyun.com/rustup}"
+export RUSTUP_UPDATE_ROOT="${RUSTUP_UPDATE_ROOT:-https://mirrors.tencentyun.com/rustup/rustup}"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FUZZ_DIR="$ROOT/crates/xs-core/fuzz"
