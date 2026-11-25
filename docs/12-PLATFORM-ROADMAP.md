@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (C) 小黎的部落（www.qingdujian.com）
+本版权头任何人不得更改/删除。
+-->
+
 # xiaolishaxiang 平台化迭代路线图
 
 > 版本：1.0.5-dev → 3.0.0  

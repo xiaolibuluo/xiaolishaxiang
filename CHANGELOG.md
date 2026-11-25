@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: AGPL-3.0-only
+Copyright (C) 小黎的部落（www.qingdujian.com）
+本版权头任何人不得更改/删除。
+-->
+
 # Changelog
 
 ## [1.0.11] — 2026-11-25
@@ -48,3 +54,42 @@
 - 9 个 crate，62 个 Rust 源文件
 - 新增 28 个测试（P1: 7 + P4 scheduler: 7 + multi-node: 7 + 已有: 7）
 - clippy strict 0 warning, 全量测试 0 失败
+
+### P5: 安全加固与合规（2026-11-25）
+
+**SBOM 生成**
+- 安装 `cargo-cyclonedx` 0.5.10，生成 CycloneDX 1.4 SBOM
+- 产物：`artifacts/sbom/xiaolishaxiang-1.0.11.sbom.json`（109 个组件，134KB）
+- 新建 `ci/run_sbom.sh` 自动化生成脚本
+
+**合规矩阵**
+- 新建 `docs/13-COMPLIANCE-MATRIX.md`：14 条 SP-ID 全量映射至 CIS Benchmark v8 / NIST SP 800-53 Rev5 / ISO/IEC 27001:2022
+- 修正 SP-L2-01 的 NIST 映射（AU-3 → SC-5）
+- NIST 14/14 覆盖，ISO 14/14 覆盖，CIS 4/14（沙箱特有机制不在通用 OS 加固范围）
+
+**安全审计清单**
+- 新建 `docs/14-SECURITY-AUDIT-CHECKLIST.md`：8 大类 44 条结构化审计检查项
+- 通过率 97.7%（43/44），仅 wasmtime 独立版本审查标记为待补充
+- 涵盖：威胁模型/L1 隔离/L2 资源/L3 运行时/全局安全/代码构建/供应链
+
+**依赖合规修复**
+- `deny.toml`：许可证白名单扩充至 12 项（新增 Apache-2.0 WITH LLVM-exception/BSD-2-Clause/BSD-3-Clause/GPL-2.0-only/ISC/MPL-2.0/Unlicense/Zlib）
+- `deny.toml`：豁免 RUSTSEC-2024-0437（protobuf 2.28.0 栈溢出；仅通过 prometheus 传递依赖，非直接处理用户输入，豁免至 2027-03-31）
+- cargo-deny 全量通过（advisories ok, bans ok, licenses ok, sources ok）
+
+**SPDX 版权头补齐**
+- 6 个缺失 SPDX 头的文件全部补齐：`CHANGELOG.md`、`xs-daemon/build.rs`、`xs-scheduler/build.rs`、`sandbox.proto`、`scheduler.proto`、`docs/12-PLATFORM-ROADMAP.md`
+- REUSE 合规：3322/3322 文件全合规
+
+**质量基线验证**
+- `cargo fmt --check` 零差异
+- `cargo clippy --workspace --all-targets -- -D warnings` 零警告
+- `cargo build --locked` + `cargo build --release --locked` 双重编译通过
+- `cargo test --workspace --locked` 全量通过，0 失败
+- `reuse lint` 3322/3322 全合规
+- `cargo-deny` advisories/bans/licenses/sources 全通过
+
+**深度打磨发现的真实缺陷**
+- DEFECT-2026-02（SP-L1-03）：seccomp allowlist 缺失 fcntl/poll/getcwd，动态链接二进制（coreutils 经 libselinux 启动期 fd 健全性检查）沙箱内 exec 成功后自触发 SIGABRT
+- 修复：filter.rs sandbox_minimal() 补充 3 个只读 syscall；新增 2 个回归用例（fault_crash.rs 7/7 全绿）
+- 登记：docs/09-DEFECT-REGRESSION.md
