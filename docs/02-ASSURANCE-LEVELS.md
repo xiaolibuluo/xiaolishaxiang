@@ -3,7 +3,6 @@ SPDX-License-Identifier: AGPL-3.0-only
 Copyright (C) 小黎的部落（www.qingdujian.com）
 本版权头任何人不得更改/删除。
 -->
-
 # 保证等级与运行时探测（Assurance Levels）
 
 保证等级是运行时探测后导出的有效等级（effective level），不是按环境查表得到的静态承诺。
@@ -51,16 +50,10 @@ capabilities() 必须返回 ABI 版本号，禁止只返回布尔『支持/不�
 
 | 形态 | userns 依赖 | 定调 |
 |---|---|---|
-| 特权 supervisor（root） | 不依赖 unprivileged_userns_clone | 推荐部署形态，可稳定达到 A / A- |
-| 非特权 supervisor | 依赖发行版策略（Debian/Ubuntu 部分版本默认关闭或限制） | 支持但保证等级由探测决定，可能仅为 B |
+| 特权 supervisor（root） | 不依赖 unprivileged_userns_clone | 唯一正式支持形态，可稳定达到 A / A- |
+| 非特权 supervisor | 依赖发行版策略（Debian/Ubuntu 部分版本默认关闭或限制） | 不正式支持；保证等级上限 B 且发行版差异大 |
 
-非特权模式是否作为正式支持形态：**M3 收口决策——不正式支持**。
-A 级保证所需的多项基础能力（cgroup v2 真实委派的 subtree_control 写操作、
-network namespace 创建、landlock restrict_self 全量生效）依赖 root 权限；
-非特权路径的探测结果上限为 B 且发行版策略差异大（userns 可用性、landlock
-非特权调用受限），投入产出不足以支撑 M3 发布质量。
-M3 以 rootful supervisor 为唯一支持形态；非特权路径评估推迟到后续里程碑
-单独评审，届时需提供发行版兼容矩阵与降级路径方案。
+rootful supervisor 为唯一正式支持形态：A 级保证所需的多项基础能力（cgroup v2 真实委派的 subtree_control 写操作、network namespace 创建、landlock restrict_self 全量生效）依赖 root 权限。
 
 ## 6. 容器环境
 

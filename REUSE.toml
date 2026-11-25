@@ -4,7 +4,7 @@ SPDX-PackageSupplier = "小黎的部落（www.qingdujian.com）"
 SPDX-PackageDownloadLocation = "https://www.qingdujian.com/xiaolishaxiang"
 
 [[annotations]]
-path = ["target/**", "**/.git/**", "Cargo.lock", "**/Cargo.lock", "artifacts/**", "crates/xs-core/fuzz/target/**", "crates/xs-core/fuzz/corpus/**", "crates/xs-core/fuzz/artifacts/**", "crates/xs-core/fuzz/dictionaries/**", "spike/*.log"]
+path = ["target/**", "**/.git/**", "Cargo.lock", "**/Cargo.lock", "artifacts/**", "crates/xs-core/fuzz/target/**", "crates/xs-core/fuzz/corpus/**", "crates/xs-core/fuzz/artifacts/**", "crates/xs-core/fuzz/dictionaries/**", "spike/*.log", "supply-chain/*.toml", "supply-chain/imports.lock"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "小黎的部落（www.qingdujian.com）"
 SPDX-License-Identifier = "AGPL-3.0-only"

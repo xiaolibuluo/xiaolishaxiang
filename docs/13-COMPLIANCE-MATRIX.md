@@ -7,30 +7,29 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 # 合规矩阵（Compliance Matrix）
 
 将全部 SP-ID（安全属性规约）映射至 CIS Benchmark、NIST SP 800-53、ISO/IEC 27001 三个标准体系。
-本矩阵是 P5 阶段「安全加固与合规」的核心交付物，用于支持下游企业采购与合规评估。
 
 ## 映射总表
 
 | SP-ID | 简述 | CIS Benchmark v8 | NIST SP 800-53 Rev5 | ISO/IEC 27001:2022 | 状态 |
 |---|---|---|---|---|---|
 | **L1 系统隔离层** | | | | | |
-| SP-L1-01 | 文件系统路径隔离 | 1.6.1 (Ensure AppArmor is enabled) | AC-3 (Access Enforcement) | A.8.3 (A.9.4.2) | ✅ M1 |
-| SP-L1-02 | ptrace 与提权阻断 | 5.4.2 (Ensure system accounts are secured) | AC-6 (Least Privilege) | A.8.2 (A.9.2.3) | ✅ M1 |
-| SP-L1-03 | 系统调用默认拒绝与 io_uring 关闭 | —（无直接对应） | SI-3 (Malicious Code Protection) | A.8.7 (A.12.2.1) | ✅ M1 |
-| SP-L1-04 | 最小 fd 继承 | 1.6.1 (AppArmor) | AC-3 (Access Enforcement) | A.8.3 (A.9.4.2) | ✅ M1 |
-| SP-L1-05 | 网络默认拒绝 | 3.5.2.1 (Firewall Configuration) | SC-7 (Boundary Protection) | A.8.20 (A.13.1.1) | ✅ M4 |
-| SP-L1-06 | PID namespace 语义 | — | SC-39 (Process Isolation) | A.8.1 (A.12.4.1) | ✅ M4 |
+| SP-L1-01 | 文件系统路径隔离 | 1.6.1 (Ensure AppArmor is enabled) | AC-3 (Access Enforcement) | A.8.3 (A.9.4.2) | ✅ |
+| SP-L1-02 | ptrace 与提权阻断 | 5.4.2 (Ensure system accounts are secured) | AC-6 (Least Privilege) | A.8.2 (A.9.2.3) | ✅ |
+| SP-L1-03 | 系统调用默认拒绝与 io_uring 关闭 | —（无直接对应） | SI-3 (Malicious Code Protection) | A.8.7 (A.12.2.1) | ✅ |
+| SP-L1-04 | 最小 fd 继承 | 1.6.1 (AppArmor) | AC-3 (Access Enforcement) | A.8.3 (A.9.4.2) | ✅ |
+| SP-L1-05 | 网络默认拒绝 | 3.5.2.1 (Firewall Configuration) | SC-7 (Boundary Protection) | A.8.20 (A.13.1.1) | ✅ |
+| SP-L1-06 | PID namespace 语义 | — | SC-39 (Process Isolation) | A.8.1 (A.12.4.1) | ✅ |
 | **L2 资源治理层** | | | | | |
-| SP-L2-01 | 内存限额真实生效 | 1.6.2 (Ensure SELinux is enabled) | SC-5 (Denial-of-Service Protection) | A.8.1 (A.12.4.1) | ✅ M2 |
-| SP-L2-02 | CPU / IO 配额 | — | SC-5 (Denial-of-Service Protection) | A.8.1 (A.12.4.1) | ✅ M2 |
-| SP-L2-03 | 背压不丢控 | — | SC-5 (Denial-of-Service Protection) | A.8.12 (A.12.4.3) | ✅ M2 |
-| SP-L2-04 | 审计通道独立配额 | — | AU-4 (Audit Storage Capacity) | A.8.12 (A.12.4.3) | ✅ M2 |
+| SP-L2-01 | 内存限额真实生效 | 1.6.2 (Ensure SELinux is enabled) | SC-5 (Denial-of-Service Protection) | A.8.1 (A.12.4.1) | ✅ |
+| SP-L2-02 | CPU / IO 配额 | — | SC-5 (Denial-of-Service Protection) | A.8.1 (A.12.4.1) | ✅ |
+| SP-L2-03 | 背压不丢控 | — | SC-5 (Denial-of-Service Protection) | A.8.12 (A.12.4.3) | ✅ |
+| SP-L2-04 | 审计通道独立配额 | — | AU-4 (Audit Storage Capacity) | A.8.12 (A.12.4.3) | ✅ |
 | **L3 运行时隔离层** | | | | | |
-| SP-L3-01 | 能力句柄不可伪造 | — | AC-3 (Access Enforcement) | A.8.3 (A.9.4.1) | ✅ M3 |
-| SP-L3-02 | WASM 线性内存边界 | — | SC-39 (Process Isolation) | A.8.25 (A.14.2.8) | ✅ M3 |
+| SP-L3-01 | 能力句柄不可伪造 | — | AC-3 (Access Enforcement) | A.8.3 (A.9.4.1) | ✅ |
+| SP-L3-02 | WASM 线性内存边界 | — | SC-39 (Process Isolation) | A.8.25 (A.14.2.8) | ✅ |
 | **全局** | | | | | |
-| SP-G-01 | fail-closed | — | SA-11 (Developer Testing and Evaluation) | A.8.25 (A.14.2.8) | ✅ M1 |
-| SP-G-02 | 探测一致性 | — | CM-8 (System Component Inventory) / SA-11 | A.8.25 (A.14.2.8) | ✅ M2 |
+| SP-G-01 | fail-closed | — | SA-11 (Developer Testing and Evaluation) | A.8.25 (A.14.2.8) | ✅ |
+| SP-G-02 | 探测一致性 | — | CM-8 (System Component Inventory) / SA-11 | A.8.25 (A.14.2.8) | ✅ |
 
 ## 映射说明
 
@@ -83,14 +82,8 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 
 | SP-ID | 测试证据 | 文档证据 |
 |---|---|---|
-| SP-L1-01~06 | `crates/xs-l1-sys/tests/` 覆盖，M4 172 用例全绿 | docs/01-SECURITY-PROPERTIES.md, docs/08-CVE-CORPUS.md |
+| SP-L1-01~06 | `crates/xs-l1-sys/tests/` 覆盖，本机 172 用例全绿 | docs/01-SECURITY-PROPERTIES.md, docs/08-CVE-CORPUS.md |
 | SP-L2-01~04 | `crates/xs-l2-res/tests/` + 背压测试 | docs/04-TEST-MATRIX.md L2 行 |
 | SP-L3-01~02 | `crates/xs-l3-rt/tests/` 7 用例对抗全绿 | docs/07-UNSAFE-REVIEW.md, docs/09-DEFECT-REGRESSION.md |
-| SP-G-01 | fuzz 冒烟 954K runs 0 crash + from_toml 任意输入不 panic | docs/04-TEST-MATRIX.md, artifacts/fuzz/ |
+| SP-G-01 | fuzz 冒烟 656,896 runs 0 crash + from_toml 任意输入不 panic | docs/04-TEST-MATRIX.md, artifacts/fuzz/ |
 | SP-G-02 | landlock ABI v8 / cgroup 真实委派 / seccomp TSYNC 全部实测通过 | docs/06-M0-SPIKE.md 探针 1/2/4 |
-
-## 变更记录
-
-| 日期 | 版本 | 变更 |
-|---|---|---|
-| 2026-11-25 | v1.0 | 初版：14 条 SP-ID 全量映射至 CIS/NIST/ISO；修正 SP-L2-01 的 NIST 映射（AU-3 → SC-5，与 DoS 防护语义一致）；补全缺失的 7 条映射 |

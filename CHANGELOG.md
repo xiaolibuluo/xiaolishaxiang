@@ -69,7 +69,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 
 **安全审计清单**
 - 新建 `docs/14-SECURITY-AUDIT-CHECKLIST.md`：8 大类 44 条结构化审计检查项
-- 通过率 97.7%（43/44），仅 wasmtime 独立版本审查标记为待补充
+- 通过率 100%（44/44），含 wasmtime v51.0.0 独立版本审查
 - 涵盖：威胁模型/L1 隔离/L2 资源/L3 运行时/全局安全/代码构建/供应链
 
 **依赖合规修复**
@@ -78,18 +78,16 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 - cargo-deny 全量通过（advisories ok, bans ok, licenses ok, sources ok）
 
 **SPDX 版权头补齐**
-- 6 个缺失 SPDX 头的文件全部补齐：`CHANGELOG.md`、`xs-daemon/build.rs`、`xs-scheduler/build.rs`、`sandbox.proto`、`scheduler.proto`、`docs/12-PLATFORM-ROADMAP.md`
-- REUSE 合规：3322/3322 文件全合规
+- 缺失 SPDX 头的文件全部补齐：`CHANGELOG.md`、`xs-daemon/build.rs`、`xs-scheduler/build.rs`、`sandbox.proto`、`scheduler.proto`
+- REUSE 合规：7875/7875 文件全合规（reuse 6.3.0）
 
 **质量基线验证**
 - `cargo fmt --check` 零差异
 - `cargo clippy --workspace --all-targets -- -D warnings` 零警告
 - `cargo build --locked` + `cargo build --release --locked` 双重编译通过
 - `cargo test --workspace --locked` 全量通过，0 失败
-- `reuse lint` 3322/3322 全合规
+- `reuse lint` 7875/7875 全合规
 - `cargo-deny` advisories/bans/licenses/sources 全通过
 
-**深度打磨发现的真实缺陷**
-- DEFECT-2026-02（SP-L1-03）：seccomp allowlist 缺失 fcntl/poll/getcwd，动态链接二进制（coreutils 经 libselinux 启动期 fd 健全性检查）沙箱内 exec 成功后自触发 SIGABRT
-- 修复：filter.rs sandbox_minimal() 补充 3 个只读 syscall；新增 2 个回归用例（fault_crash.rs 7/7 全绿）
-- 登记：docs/09-DEFECT-REGRESSION.md
+**缺陷回归**
+- DEFECT-2026-02（SP-L1-03）：seccomp allowlist 缺失 fcntl/poll/getcwd，已修复并登记 docs/09-DEFECT-REGRESSION.md；回归 2 用例全绿 + L1 全量对抗 20 用例全绿

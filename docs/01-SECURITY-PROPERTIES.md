@@ -3,7 +3,6 @@ SPDX-License-Identifier: AGPL-3.0-only
 Copyright (C) 小黎的部落（www.qingdujian.com）
 本版权头任何人不得更改/删除。
 -->
-
 # 安全属性规约（SP-ID 注册表）
 
 每条安全属性具有唯一 SP-ID。全部测试用例、对抗用例、隔离有效性用例必须声明其所验证的 SP-ID；发布门禁报告按 SP-ID 统计覆盖与未覆盖清单。
@@ -25,7 +24,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 
 沙箱内进程无法 ptrace supervisor 及宿主其他进程，无法获取 setuid 能力与任何 CAP_*。
 
-机制落点（M0 定调，M1 实现与对抗用例均以此为准）：
+机制落点：
 
 1. seccomp allowlist 默认不包含 ptrace 与 process_vm_readv / process_vm_writev；
 2. PR_SET_NO_NEW_PRIVS=1 阻断 setuid 与 file capability 提权；
@@ -37,7 +36,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 - seccomp 采用 allowlist 模式：未列出的 syscall 默认拒绝，禁止 denylist；
 - io_uring_setup / io_uring_enter / io_uring_register 默认不在 allowlist（io_uring 默认关闭），作为显式配置项存在，开启需在配置中声明并接受文档警示；
 - 内核版本升级触发 syscall 清单漂移审查：新内核引入的 syscall 必须经人工确认后方可加入 allowlist。
-- 安装被拒的识别（M0 Spike 实测）：seccomp 安装被拒绝时错误码可能是 EPERM 或 EACCES（Ubuntu 的 AppArmor 限制非特权程序时返回 EACCES）。xs-l1-sys 必须将两者都识别为『被拒绝』，并报出指向 no_new_privs / AppArmor 的明确错误信息；任何错误码都不得被解释为静默成功。
+- 安装被拒的识别：seccomp 安装被拒绝时错误码可能是 EPERM 或 EACCES（Ubuntu 的 AppArmor 限制非特权程序时返回 EACCES，M0 Spike 实测）。xs-l1-sys 必须将两者都识别为『被拒绝』，并报出指向 no_new_privs / AppArmor 的明确错误信息；任何错误码都不得被解释为静默成功。
 
 ### SP-L1-04 最小 fd 继承
 
@@ -105,9 +104,9 @@ WASM 模块无法越出线性内存读写宿主或其他实例内存；宿主函
 
 capabilities() 报告可用的每一项机制必须实测验证：landlock 报 ABI 版本（非布尔）、cgroup v2 报真实可委派（实际创建子 cgroup、写入 memory.max 并回读生效，且 cgroup.subtree_control 已 enable memory/cpu 控制器）、seccomp 报 filter 已安装且含 TSYNC。
 
-## 变更记录
+## 工程基线
 
-| 版本 | 变更 |
-|---|---|
-| v5 定稿 | 初版注册表；SP-L1-02 补充 ptrace 机制四元落点；SP-L1-05 补充 A 级双网络防线分别验证条款；SP-G-02 补充 subtree_control 控制器 enable 检查 |
-| v6 M3 收口 | 占位决策落地：skipped_pending_advisory 升级发布阻断天数 N=14；CLA/DCO 选 DCO（sign-off 即可，无 CLA 签署基础设施）；非特权模式 M3 不予正式支持（rootful supervisor 为唯一支持形态，见 docs/02）。版权头工具迁移至 REUSE 权威校验（check_copyright.sh 调用 reuse lint + 持有者行检查） |
+- skipped_pending_advisory 升级发布阻断天数 N=14；
+- 贡献者协议采用 DCO（sign-off 即可，无 CLA 签署基础设施）；
+- 非特权模式不予正式支持（rootful supervisor 为唯一支持形态，见 docs/02）；
+- 版权头工具为 REUSE 权威校验（ci/check_copyright.sh 调用 reuse lint + 持有者行检查）。

@@ -3,74 +3,116 @@ SPDX-License-Identifier: AGPL-3.0-only
 Copyright (C) 小黎的部落（www.qingdujian.com）
 本版权头任何人不得更改/删除。
 -->
+# xiaolishaxiang（小黎沙箱）
 
-# xiaolishaxiang
+Linux 专用三层隔离沙箱，Rust 实现，许可证 AGPL-3.0-only。当前版本 **1.0.11**。
 
-万能通用三层隔离层沙箱（Linux 专用）。为不可信代码与外部工作负载提供纵深防御的统一隔离执行环境，以库（crate）+ CLI 双形态交付。
+## 功能
 
-## 开源协议与传染性声明
+### 三层隔离架构
 
-本项目采用 AGPL-3.0-only 协议发布（见 LICENSE）。
+| 层 | 机制 | crate |
+|---|---|---|
+| L1 系统隔离 | namespace、seccomp allowlist（io_uring 默认关闭）、landlock、no_new_privs、ptrace 限制 | xs-l1-sys |
+| L2 资源治理 | cgroup v2 真实委派、rlimit、令牌桶背压、独立配额审计通道 | xs-l2-res |
+| L3 运行时隔离 | wasmtime 51 + capability 句柄表 | xs-l3-rt |
 
-> 网络传染性提示：AGPL 具有网络传染性。任何将 xiaolishaxiang 集成进网络服务（包括通过 SaaS 方式对外提供服务）的第三方，都必须以 AGPL-3.0 开源其服务源码。请在集成前确认你的业务模式可以接受该义务。
+### 保证等级（运行时探测导出）
 
-## 环境前提（务必先读）
+| 等级 | 条件 | 行为 |
+|---|---|---|
+| A | 内核 6.2+，landlock ABI v3+（含网络管控），cgroup v2 真实委派 | 完整防线 |
+| A- | 内核 5.15~6.1 | 网络仅 netns 单防线 |
+| B | landlock 缺失或 cgroup v2 不可委派 | 降级防线 |
+| C | 低于最低条件 | 默认拒绝启动 |
 
-| 项 | 要求 / 说明 |
+min_assurance ∈ {A, A-, B}；低于门禁即拒启，fail-closed，禁止静默降级。
+
+### 产品形态
+
+- **库**：xs-api 编排（校验 → 探测 → 判定 → 建域）
+- **CLI**：`xs-cli check <config.toml>`
+- **Daemon**：xs-daemon，gRPC `0.0.0.0:50051` + HTTP `0.0.0.0:3000`；沙箱池 max_size 默认 128
+- **Scheduler**：xs-scheduler，gRPC `0.0.0.0:50052`
+- **gRPC 接口**：sandbox.proto 6 RPC、scheduler.proto 4 RPC
+
+### workspace 组成（9 crates）
+
+xs-core、xs-l1-sys、xs-l2-res、xs-l3-rt、xs-api、xs-cli、xs-daemon、xs-policy、xs-scheduler。
+
+## 实测数据
+
+### 测试
+
+| 项 | 数据 |
 |---|---|
-| 操作系统 | 仅 Linux（Windows / macOS 不支持系统级隔离层 L1） |
-| 最低内核 | 5.15（首个含 landlock 的 LTS；低于此版本 L1 不可用，沙箱按 fail-closed 拒绝启动） |
-| 推荐内核 | 6.2 及以上（landlock ABI v3，网络维度纳入能力模型，可达保证等级 A） |
-| 推荐部署形态 | 特权 supervisor（root 运行）+ 裸机 / VM。非特权模式依赖发行版的 unprivileged_userns_clone 策略，保证等级可能仅为 B，由运行时探测决定 |
-| 容器 / K8s | 容器编排环境中 namespace 套娃不可用、seccomp 被上层锁定、cgroup 委派通常拿不到，三者同时成立时 L1 基本不可用，仅能提供 L3（WASM）。A / A- 级仅裸机 / VM 可达 |
-| 信任天花板 | namespaces + seccomp 的信任上限是内核本身。对抗有决心攻击者的场景需要 VM/microVM 后端（未来扩展，非 v0.1 范围） |
+| workspace 全量测试 | 36 套件全部通过、0 失败（`cargo test --workspace --locked`，干净 env 验证，2026-11-25） |
+| 本机测试基线 | 172 用例全绿（内核 7.0.0-42 / Ubuntu 26.04.1，2026-11-24） |
+| L1 对抗用例 | 20 用例全绿 |
+| 混沌工程 | 6 类故障 9 用例全绿 |
+| 缺陷回归用例 | 2 条登记在册（DEFECT-2026-01、DEFECT-2026-02），回归全绿 |
 
-## 三层隔离架构
+### fuzz
 
-| 层 | 名称 | 机制 |
+| 项 | 数据 |
+|---|---|
+| 60s 冒烟 | 656,896 runs / 0 crash / 0 ASan（nightly 1.102.0 + libfuzzer-sys + ASan，2026-11-25） |
+| 语料 | fuzz_config_parse 语料库入库管理，2026-11-25 新增 805 条 |
+| 长程 fuzz | systemd timer 每日 05:00 触发 |
+
+### 性能（内核 7.0.0-42 裸 VM）
+
+| 指标 | 实测 | 预算 |
 |---|---|---|
-| L1 | 系统隔离层 | namespace + seccomp（allowlist，io_uring 默认关闭）+ landlock + no_new_privs + ptrace 限制 + network namespace |
-| L2 | 资源治理层 | cgroup v2 + rlimit + 令牌桶背压 |
-| L3 | 运行时隔离层 | WASM 沙箱 + capability 句柄表 |
+| spawn 延迟（基线 vs 沙箱） | 0.589ms vs 1.403ms，增加 0.802~1.004ms | ≤2ms ✅ |
+| 吞吐损失 | 56.9%~64.3% | ≤70% ✅ |
 
-三层各自实现统一 trait，逐层收紧、可独立启用、可组合叠加；层间仅通过窄接口通信，单层失效不波及其他层。
+### 供应链与安全
 
-## 保证等级（运行时探测导出，非静态承诺）
+| 项 | 数据 |
+|---|---|
+| REUSE 版权合规 | 7875/7875 文件全合规（reuse 6.3.0） |
+| unsafe 审查 | xs-l1-sys 16 处 unsafe 全部 PASS；其余 crate `#![forbid(unsafe_code)]` |
+| SBOM | CycloneDX，`artifacts/sbom/xiaolishaxiang-1.0.11.sbom.json`，109 组件 |
+| cargo-vet | 265 个依赖全部登记（exempted 基线） |
+| cargo-audit | 离线 advisory-db 1566 条，196 依赖，0 告警 |
+| osv-scanner | 196 packages，0 issues |
+| 安全审计清单 | 44 项，通过率 100% |
+| 合规矩阵 | 14 条 SP-ID：NIST SP 800-53 14/14 映射、ISO/IEC 27001:2022 14/14 映射、CIS v8 4/14 直接映射 |
+| 变异测试 | xs-core 59 mutants 覆盖率 58.3%（15 missed）；xs-l2-res 68 mutants 覆盖率 51.6%（30 missed） |
 
-| 等级 | 条件 | 用途 |
-|---|---|---|
-| A | 内核 6.2+ 且 userns 可用 且 seccomp allowlist 生效 且 cgroup v2 真实可委派 | 完全不可信代码 |
-| A- | 内核 5.15 至 6.1（landlock ABI 不高于 v2）+ 其余同 A | 完全不可信代码（网络隔离仅依赖 netns） |
-| B | userns 可用但 landlock 缺失，或 cgroup v2 不可委派 | 仅半可信负载 |
-| C | 容器内 / seccomp 无法收紧 / userns 被禁用 | 默认拒绝启动 |
+### 内核矩阵
 
-调用方通过 capabilities() / assurance_level() 程序化获取探测后的有效等级；min_assurance 不满足时按 SP-G-01 fail-closed。
+| 内核 | 状态 |
+|---|---|
+| 7.0（本机观察位，landlock ABI 8） | ✅ 172 用例全绿 |
+| 5.15 / 6.1 / 6.6 / 6.12 | ⏳ blocked_by_single_kernel |
+
+## 环境约束
+
+- 内核 ≥ 5.15（推荐 6.2+）；本机实测 7.0.0-42-generic / Ubuntu 26.04.1 / systemd 259 / landlock ABI 8
+- Rust stable 1.100.0（rust-toolchain.toml 锁定）；nightly 1.102.0 仅用于 fuzz / Miri / TSan
+- rootful supervisor 为唯一支持形态
 
 ## 文档索引
 
 | 文档 | 内容 |
 |---|---|
-| docs/00-THREAT-MODEL.md | 威胁模型：攻击者画像、TCB、不防清单 |
-| docs/01-SECURITY-PROPERTIES.md | 安全属性规约（SP-ID 注册表，全部测试可追溯） |
-| docs/02-ASSURANCE-LEVELS.md | 保证等级与运行时探测规则 |
-| docs/03-ARCHITECTURE.md | 架构与代码组织、工程纪律 |
-| docs/04-TEST-MATRIX.md | 四级测试矩阵门禁 |
-| docs/05-SUPPLY-CHAIN.md | 供应链防护 |
-| docs/06-M0-SPIKE.md | M0 技术探针计划与实测结果 |
-| docs/07-UNSAFE-REVIEW.md | unsafe 审查清单（16 处全 PASS） |
+| docs/00-THREAT-MODEL.md | 威胁模型 |
+| docs/01-SECURITY-PROPERTIES.md | 安全属性注册表（SP-ID） |
+| docs/02-ASSURANCE-LEVELS.md | 保证等级 |
+| docs/03-ARCHITECTURE.md | 架构 |
+| docs/04-TEST-MATRIX.md | 测试矩阵 |
+| docs/05-SUPPLY-CHAIN.md | 供应链 |
+| docs/06-M0-SPIKE.md | M0 探针实测 |
+| docs/07-UNSAFE-REVIEW.md | unsafe 审查清单 |
 | docs/08-CVE-CORPUS.md | CVE 对抗语料登记 |
-| docs/09-DEFECT-REGRESSION.md | 缺陷回归用例集 |
-| docs/10-KERNEL-MATRIX.md | 内核版本兼容矩阵 |
-| docs/11-CHAOS-ENGINEERING.md | 混沌工程方案与用例 |
-| docs/12-PLATFORM-ROADMAP.md | 平台化迭代路线图（P1~P6） |
-| docs/13-COMPLIANCE-MATRIX.md | 合规矩阵（SP-ID → CIS/NIST/ISO 映射） |
-| docs/14-SECURITY-AUDIT-CHECKLIST.md | 安全审计清单（44 项，通过率 97.7%） |
-
-## 工具链
-
-- 贡献者 / CI 环境：rust-toolchain.toml 锁定 1.100.0（含 clippy / rustfmt）。
-- 库对外承诺的 MSRV：见 Cargo.toml 的 rust-version 字段，与 1.100.0 是两个不同概念，下游集成方无需安装 1.100.0。
+| docs/09-DEFECT-REGRESSION.md | 缺陷回归登记 |
+| docs/10-KERNEL-MATRIX.md | 内核矩阵 |
+| docs/11-CHAOS-ENGINEERING.md | 混沌工程 |
+| docs/13-COMPLIANCE-MATRIX.md | 合规矩阵 |
+| docs/14-SECURITY-AUDIT-CHECKLIST.md | 安全审计清单（44 项，通过率 100%） |
 
 ## 版权
 
-Copyright (C) 小黎的部落（www.qingdujian.com）。本项目的版权头任何人不得更改/删除，由 CI 第一道门禁（reuse 校验）强制保护。
+AGPL-3.0-only。版权头由 REUSE 权威校验（ci/check_copyright.sh）。

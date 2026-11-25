@@ -3,7 +3,6 @@ SPDX-License-Identifier: AGPL-3.0-only
 Copyright (C) 小黎的部落（www.qingdujian.com）
 本版权头任何人不得更改/删除。
 -->
-
 # 威胁模型（Threat Model）
 
 本文档回答四个问题：谁是攻击者、什么是可信计算基（TCB）、明确不防什么、每层的安全边界是什么。
