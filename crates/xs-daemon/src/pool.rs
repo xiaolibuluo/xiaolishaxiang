@@ -150,13 +150,24 @@ fn build_sandbox(config_toml: &str) -> Result<Sandbox, xs_core::XsError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+    use std::path::PathBuf;
 
     const MINIMAL_CONFIG: &str = r#"
 min_assurance = "A-"
 allow_io_uring = false
 "#;
 
+    fn true_cmd() -> xs_api::SandboxCommand {
+        xs_api::SandboxCommand {
+            program: PathBuf::from("/bin/true"),
+            args: vec![],
+            env: vec![],
+        }
+    }
+
     #[tokio::test]
+    #[serial]
     async fn pool_warmup_and_acquire() {
         let pool = SandboxPool::new(PoolConfig::default());
         pool.warmup(2, "test-tenant", MINIMAL_CONFIG)
@@ -170,5 +181,134 @@ allow_io_uring = false
             .await
             .expect("acquire");
         assert!(!h.id.is_empty());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pool_acquire_run_release_chain() {
+        let pool = SandboxPool::new(PoolConfig::default());
+        pool.warmup(1, "test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("warmup");
+
+        // acquire：idle 弹出
+        let mut h = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire");
+        let stats = pool.stats().await;
+        assert_eq!(stats.idle, 0);
+        assert_eq!(stats.active, 1);
+
+        // run：沙箱内执行真实命令
+        let status = h.sandbox.run(true_cmd()).expect("run /bin/true");
+        assert!(matches!(status, xs_api::ExitStatus::Exited(0)));
+        h.command_count += 1;
+
+        // release：未过期且池未满，回池复用
+        pool.release(h).await;
+        let stats = pool.stats().await;
+        assert_eq!(stats.idle, 1);
+        assert_eq!(stats.active, 0);
+
+        // 再次 acquire 应复用同一沙箱（command_count 保留）
+        let h2 = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("re-acquire");
+        assert_eq!(h2.command_count, 1, "复用的沙箱应保留 command_count");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pool_release_expired_handle_dropped() {
+        let pool = SandboxPool::new(PoolConfig::default());
+        let mut h = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire");
+        // 通过 max_commands 强制过期
+        h.max_commands = 1;
+        h.command_count = 1;
+        assert!(h.is_expired());
+
+        pool.release(h).await;
+        let stats = pool.stats().await;
+        assert_eq!(stats.idle, 0, "过期句柄不应回池");
+        assert_eq!(stats.active, 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pool_release_full_pool_drops_handle() {
+        let config = PoolConfig {
+            max_size: 1,
+            ..PoolConfig::default()
+        };
+        let pool = SandboxPool::new(config);
+        pool.warmup(1, "test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("warmup");
+
+        let h1 = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire h1");
+        // idle 已空，h2 动态创建
+        let h2 = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire h2");
+
+        pool.release(h1).await; // idle 0 < max_size 1，回池
+        pool.release(h2).await; // idle 1 >= max_size 1，丢弃
+
+        let stats = pool.stats().await;
+        assert_eq!(stats.idle, 1, "池满时多余句柄应被丢弃");
+        assert_eq!(stats.active, 0);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pool_handle_expiry_logic() {
+        let pool = SandboxPool::new(PoolConfig::default());
+        let mut h = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire");
+        assert!(!h.is_expired(), "新句柄不应过期");
+
+        // max_commands 触发过期
+        h.command_count = h.max_commands;
+        assert!(h.is_expired(), "命令数达上限应过期");
+
+        // TTL 触发过期
+        let mut h2 = pool
+            .acquire("test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("acquire h2");
+        h2.ttl_secs = 1;
+        h2.created_at = SystemTime::now() - Duration::from_secs(2);
+        assert!(h2.is_expired(), "超过 TTL 应过期");
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn pool_gc_removes_expired_handles() {
+        let config = PoolConfig {
+            gc_interval_secs: 1,
+            default_ttl_secs: 2,
+            ..PoolConfig::default()
+        };
+        let pool = Arc::new(SandboxPool::new(config));
+        pool.warmup(1, "test-tenant", MINIMAL_CONFIG)
+            .await
+            .expect("warmup");
+        assert_eq!(pool.stats().await.idle, 1);
+
+        pool.clone().start_gc();
+        // 等待 TTL 过期 + 至少一次 GC 周期
+        tokio::time::sleep(Duration::from_millis(3500)).await;
+        assert_eq!(pool.stats().await.idle, 0, "GC 应清理过期空闲沙箱");
     }
 }

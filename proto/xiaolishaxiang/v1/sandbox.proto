@@ -8,6 +8,8 @@ service SandboxService {
   rpc CreateSandbox(CreateSandboxRequest) returns (CreateSandboxResponse);
   // 在已有沙箱内执行命令并返回退出状态。
   rpc RunCommand(RunCommandRequest) returns (RunCommandResponse);
+  // 在已有沙箱内执行命令并流式返回 stdout/stderr。
+  rpc RunCommandStream(RunCommandRequest) returns (stream RunCommandStreamResponse);
   // 销毁沙箱实例，释放所有资源。
   rpc DestroySandbox(DestroySandboxRequest) returns (DestroySandboxResponse);
   // 健康检查探针（对齐 xs_api::health 输出）。
@@ -72,6 +74,19 @@ message SandboxInfo {
 }
 
 message ListSandboxesRequest {}
+
+message CommandResult {
+  int32 exit_code = 1;        // 最终退出码
+  uint64 latency_us = 2;      // 延迟（微秒）
+}
+
+message RunCommandStreamResponse {
+  oneof payload {
+    bytes stdout_chunk = 1;      // 标准输出片段
+    bytes stderr_chunk = 2;      // 标准错误片段
+    CommandResult result = 3;    // 最终结果（流结束信号）
+  }
+}
 
 message ListSandboxesResponse {
   repeated SandboxInfo sandboxes = 1;
