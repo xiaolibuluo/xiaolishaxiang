@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+name: blocker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blocker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  blocker:
+    name: blocker
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain (locked)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.100.0"
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: blocker-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: REUSE 版权头合规
+        run: pipx run reuse==6.3.0 lint
+
+      - name: 文件行数检查
+        run: bash ci/check_file_length.sh
+
+      - name: cargo fmt --check
+        run: cargo fmt --all --check
+
+      - name: cargo clippy（零警告）
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo-deny（依赖策略）
+        run: |
+          cargo install cargo-deny --locked
+          cargo deny check
+
+      - name: Build（debug，--locked）
+        run: cargo build --workspace --locked
+
+      - name: Build（release，--locked）
+        run: cargo build --workspace --release --locked
+
+      - name: Test（workspace，--locked）
+        run: cargo test --workspace --locked
