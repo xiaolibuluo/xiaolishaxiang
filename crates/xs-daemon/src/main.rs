@@ -25,6 +25,11 @@ use xs_daemon::scheduler_client::SchedulerClient;
 use xs_daemon::tenant::TenantRegistry;
 use xs_daemon::SandboxHandle;
 
+// ── 信号常量 ────────────────────────────────────────────────────────
+
+/// seccomp 违规信号（架构不匹配或 KILL_PROCESS 策略时内核发送）。
+const SIGSYS: i32 = 31;
+
 // ── Metrics ──────────────────────────────────────────────────────────
 
 struct Metrics {
@@ -33,8 +38,8 @@ struct Metrics {
     command_total: IntCounter,
     command_errors: IntCounter,
     command_latency: Histogram,
-    /// 预留给 L1 seccomp 违规计数（L1 暂未暴露读取接口，保持 0）。
-    _seccomp_violations: IntCounter,
+    /// L1 seccomp 违规计数：子进程因 SIGSYS 终止时递增。
+    seccomp_violations: IntCounter,
     active_sandboxes: IntGauge,
     pool_size: IntGauge,
     rss_bytes: IntGauge,
@@ -99,7 +104,7 @@ impl Metrics {
             command_total,
             command_errors,
             command_latency,
-            _seccomp_violations: seccomp_violations,
+            seccomp_violations,
             active_sandboxes,
             pool_size,
             rss_bytes,
@@ -205,6 +210,9 @@ impl SandboxService for SandboxServiceImpl {
                     xs_api::ExitStatus::Exited(code) => code,
                     xs_api::ExitStatus::Signaled(sig) => {
                         warn!("沙箱 {} 流式命令被信号 {} 终止", req.sandbox_id, sig);
+                        if sig == SIGSYS {
+                            self.metrics.seccomp_violations.inc();
+                        }
                         -sig
                     }
                 };
@@ -421,6 +429,9 @@ impl SandboxService for SandboxServiceImpl {
                     xs_api::ExitStatus::Exited(code) => code,
                     xs_api::ExitStatus::Signaled(sig) => {
                         warn!(trace_id = %trace_id, sandbox_id = %req.sandbox_id, signal = sig, "命令被信号终止");
+                        if sig == SIGSYS {
+                            self.metrics.seccomp_violations.inc();
+                        }
                         -sig
                     }
                 };
