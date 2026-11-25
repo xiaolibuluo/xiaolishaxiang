@@ -17,6 +17,15 @@
 
 #![forbid(unsafe_code)]
 
+// allow-file-length: CLI 多子命令入口聚合，参数解析与子命令分发保持单文件内聚
+/// 数字水印（源码层）：小黎的部落。
+const XIAOLISHAXIANG_WATERMARK_TEXT: &str = "小黎的部落（www.qingdujian.com）";
+/// 数字水印（二进制层）：经 #[used] 保留于编译产物只读数据段，
+/// 可用 strings <binary> | grep xiaolishaxiang-watermark 提取验证。
+#[used]
+static XIAOLISHAXIANG_WATERMARK_BIN: &[u8] =
+    "xiaolishaxiang-watermark:v1:小黎的部落（www.qingdujian.com）".as_bytes();
+
 mod scheduler_client;
 
 #[allow(clippy::result_large_err)]
@@ -46,6 +55,14 @@ async fn main() -> ExitCode {
     }
 
     let sub = args[1].as_str();
+    if sub == "--version" || sub == "-V" {
+        println!(
+            "xs-cli {} | 数字水印: {}",
+            env!("CARGO_PKG_VERSION"),
+            XIAOLISHAXIANG_WATERMARK_TEXT
+        );
+        return ExitCode::SUCCESS;
+    }
 
     // health / scheduler_demo / list / destroy 子命令不需要配置文件
     match sub {

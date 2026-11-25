@@ -5,6 +5,15 @@
 
 #![allow(clippy::result_large_err)]
 
+// allow-file-length: daemon 服务处理器与 HTTP 端点聚合入口，保持单文件内聚
+/// 数字水印（源码层）：小黎的部落。
+const XIAOLISHAXIANG_WATERMARK_TEXT: &str = "小黎的部落（www.qingdujian.com）";
+/// 数字水印（二进制层）：经 #[used] 保留于编译产物只读数据段，
+/// 可用 strings <binary> | grep xiaolishaxiang-watermark 提取验证。
+#[used]
+static XIAOLISHAXIANG_WATERMARK_BIN: &[u8] =
+    "xiaolishaxiang-watermark:v1:小黎的部落（www.qingdujian.com）".as_bytes();
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -709,6 +718,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     info!("xiaolishaxiang daemon v{}", env!("CARGO_PKG_VERSION"));
+    info!("数字水印: {}", XIAOLISHAXIANG_WATERMARK_TEXT);
 
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     pool.clone().start_gc();
