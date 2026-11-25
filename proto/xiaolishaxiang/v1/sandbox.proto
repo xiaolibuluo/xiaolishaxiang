@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package xiaolishaxiang.v1;
+
+// SandboxService 是 xiaolishaxiang 守护进程对外暴露的 gRPC API。
+service SandboxService {
+  // 创建沙箱实例并返回 sandbox_id。
+  rpc CreateSandbox(CreateSandboxRequest) returns (CreateSandboxResponse);
+  // 在已有沙箱内执行命令并返回退出状态。
+  rpc RunCommand(RunCommandRequest) returns (RunCommandResponse);
+  // 销毁沙箱实例，释放所有资源。
+  rpc DestroySandbox(DestroySandboxRequest) returns (DestroySandboxResponse);
+  // 健康检查探针（对齐 xs_api::health 输出）。
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  // 列出当前所有活跃沙箱。
+  rpc ListSandboxes(ListSandboxesRequest) returns (ListSandboxesResponse);
+}
+
+message CreateSandboxRequest {
+  string tenant_id = 1;          // 租户标识
+  string config_toml = 2;        // SandboxConfig 的 TOML 表示
+  uint64 ttl_secs = 3;           // 沙箱存活时限（0=无限制）
+  uint64 max_commands = 4;       // 最大命令执行次数（0=无限制）
+}
+
+message CreateSandboxResponse {
+  string sandbox_id = 1;         // 分配的唯一标识
+  string created_at = 2;         // ISO 8601 时间戳
+}
+
+message RunCommandRequest {
+  string sandbox_id = 1;         // 目标沙箱
+  string program = 2;            // 可执行文件路径
+  repeated string args = 3;      // 命令行参数
+  repeated string env = 4;       // 环境变量（KEY=VALUE）
+  string stdin = 5;              // 标准输入（可选）
+}
+
+message RunCommandResponse {
+  int32 exit_code = 1;           // 退出码
+  string stdout = 2;             // 标准输出
+  string stderr = 3;             // 标准错误
+  uint64 latency_us = 4;         // 延迟（微秒）
+}
+
+message DestroySandboxRequest {
+  string sandbox_id = 1;
+}
+
+message DestroySandboxResponse {
+  bool success = 1;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string version = 1;            // 版本号
+  bool sandbox_ok = 2;           // 沙箱探针是否通过
+  uint64 latency_us = 3;         // 单次探针延迟
+  uint64 rss_kb = 4;             // 当前 RSS
+  uint32 pool_active = 5;        // 池中活跃数
+  uint32 pool_idle = 6;          // 池中空闲数
+  uint64 uptime_secs = 7;        // 守护进程运行时长
+}
+
+message SandboxInfo {
+  string sandbox_id = 1;
+  string tenant_id = 2;
+  string created_at = 3;
+  uint64 command_count = 4;
+  string state = 5;              // idle | running | draining
+}
+
+message ListSandboxesRequest {}
+
+message ListSandboxesResponse {
+  repeated SandboxInfo sandboxes = 1;
+}
