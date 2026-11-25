@@ -10,6 +10,8 @@
 //!   xs-cli health                                 沙箱健康检查探针（输出 JSON）。
 //!   xs-cli create <config.toml> [选项]            通过调度器分配节点并创建远程沙箱。
 //!   xs-cli scheduler_demo [选项]                  调度器集成验证（分配→创建→销毁）。
+//!   xs-cli list --daemon <addr>                    列出节点上所有活跃沙箱。
+//!   xs-cli destroy --daemon <addr> --sandbox-id <id> [--token <token>]  销毁指定沙箱。
 //!
 //! 退出码遵循 fail-closed：任何失败都以非零码退出。
 
@@ -37,7 +39,7 @@ async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!(
-            "用法: {} <check|run|health|create|scheduler_demo> [config.toml] [cmd...]",
+            "用法: {} <check|run|health|create|scheduler_demo|list|destroy> [config.toml] [cmd...]",
             args[0]
         );
         return ExitCode::from(2);
@@ -45,10 +47,12 @@ async fn main() -> ExitCode {
 
     let sub = args[1].as_str();
 
-    // health 和 scheduler_demo 子命令不需要配置文件
+    // health / scheduler_demo / list / destroy 子命令不需要配置文件
     match sub {
         "health" => return cmd_health(),
         "scheduler_demo" => return cmd_scheduler_demo(&args).await,
+        "list" => return cmd_list(&args).await,
+        "destroy" => return cmd_destroy(&args).await,
         _ => {}
     }
 
@@ -82,6 +86,7 @@ async fn main() -> ExitCode {
     match sub {
         "check" => cmd_check(&cfg),
         "create" => cmd_create(&cfg, &text, &args[3..]).await,
+        "list" | "destroy" => unreachable!(),
         "run" => {
             if args.len() < 4 {
                 eprintln!("run 子命令需要指定要执行的命令");
@@ -93,7 +98,7 @@ async fn main() -> ExitCode {
         other => {
             eprintln!("未知子命令: {other}");
             eprintln!(
-                "用法: {} <check|run|health|create|scheduler_demo> [config.toml] [cmd...]",
+                "用法: {} <check|run|health|create|scheduler_demo|list|destroy> [config.toml] [cmd...]",
                 args[0]
             );
             ExitCode::from(2)
@@ -441,4 +446,93 @@ async fn cmd_scheduler_demo(args: &[String]) -> ExitCode {
     eprintln!();
     eprintln!("=== 集成验证通过 ===");
     ExitCode::SUCCESS
+}
+
+// ── list 子命令：列出节点上所有活跃沙箱 ──
+
+async fn cmd_list(args: &[String]) -> ExitCode {
+    let mut daemon_addr = "127.0.0.1:50051".to_string();
+
+    let mut i = 2;
+    while i < args.len() {
+        if args[i] == "--daemon" {
+            i += 1;
+            if i < args.len() {
+                daemon_addr = args[i].clone();
+            }
+        }
+        i += 1;
+    }
+
+    let sandboxes = match scheduler_client::list_sandboxes_on_node(&daemon_addr).await {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("列表失败: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    if sandboxes.is_empty() {
+        println!("(无活跃沙箱)");
+    } else {
+        for s in &sandboxes {
+            println!(
+                "{}\t{}\t{}\t{}\t{}",
+                s.sandbox_id, s.tenant_id, s.state, s.command_count, s.created_at
+            );
+        }
+    }
+
+    eprintln!("共 {} 个活跃沙箱", sandboxes.len());
+    ExitCode::SUCCESS
+}
+
+// ── destroy 子命令：销毁指定沙箱 ──
+
+async fn cmd_destroy(args: &[String]) -> ExitCode {
+    let mut daemon_addr = "127.0.0.1:50051".to_string();
+    let mut sandbox_id = String::new();
+    let mut token = String::new();
+
+    let mut i = 2;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--daemon" => {
+                i += 1;
+                if i < args.len() {
+                    daemon_addr = args[i].clone();
+                }
+            }
+            "--sandbox-id" => {
+                i += 1;
+                if i < args.len() {
+                    sandbox_id = args[i].clone();
+                }
+            }
+            "--token" => {
+                i += 1;
+                if i < args.len() {
+                    token = args[i].clone();
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+
+    if sandbox_id.is_empty() {
+        eprintln!("destroy 需要 --sandbox-id <sandbox_id>");
+        return ExitCode::from(2);
+    }
+
+    match scheduler_client::destroy_sandbox_on_node(&daemon_addr, &sandbox_id, &token).await {
+        Ok(()) => {
+            println!("沙箱已销毁: {sandbox_id}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("销毁失败: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }

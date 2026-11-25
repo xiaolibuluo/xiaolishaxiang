@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 本文件属于 xiaolishaxiang 项目，本版权头任何人不得更改/删除。
 
-//! CLI 调度器客户端：向调度器请求沙箱分配，然后直连 daemon 创建沙箱。
+//! CLI 调度器客户端：向调度器请求沙箱分配，然后直连 daemon 创建/列表/销毁沙箱。
 
 use crate::scheduler_proto::sandbox_service_client::SandboxServiceClient;
 use crate::scheduler_proto::scheduler_service_client::SchedulerServiceClient;
 use crate::scheduler_proto::{
     AllocateSandboxRequest, AllocateSandboxResponse, CreateSandboxRequest, CreateSandboxResponse,
-    DestroySandboxRequest,
+    DestroySandboxRequest, ListSandboxesRequest, SandboxInfo,
 };
 use tonic::metadata::MetadataValue;
 use tonic::Request;
@@ -115,4 +115,19 @@ pub async fn destroy_sandbox_on_node(
         .into_inner();
 
     Ok(())
+}
+
+/// 直连 daemon 节点列出所有活跃沙箱（无需认证）。
+pub async fn list_sandboxes_on_node(node_addr: &str) -> Result<Vec<SandboxInfo>, String> {
+    let mut client = SandboxServiceClient::connect(format!("http://{node_addr}"))
+        .await
+        .map_err(|e| format!("连接 daemon {node_addr} 失败: {e}"))?;
+
+    let resp = client
+        .list_sandboxes(ListSandboxesRequest {})
+        .await
+        .map_err(|e| format!("列表沙箱失败: {e}"))?
+        .into_inner();
+
+    Ok(resp.sandboxes)
 }
