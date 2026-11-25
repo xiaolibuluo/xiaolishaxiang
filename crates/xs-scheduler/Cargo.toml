@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# 本版权头任何人不得更改/删除。
+
+[package]
+name = "xs-scheduler"
+version = { workspace = true }
+description = "xiaolishaxiang scheduler: cluster orchestration, node registry, weighted load-balanced sandbox allocation"
+license.workspace = true
+edition.workspace = true
+rust-version = "1.85"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+tonic = "0.13"
+prost = "0.13"
+tracing = "0.1"
+
+[build-dependencies]
+tonic-build = "0.13"

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package xiaolishaxiang.v1;
+
+// SchedulerService 是 xiaolishaxiang 中心调度器对外暴露的 gRPC API。
+// daemon 节点通过此接口完成注册、心跳维持与注销；
+// 客户端通过此接口请求沙箱分配（调度器按负载选择最优节点）。
+service SchedulerService {
+  // 节点注册：daemon 启动时向调度器宣告自身能力。
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+  // 心跳维持：daemon 定期（5s）上报当前负载，超时（15s）自动摘除。
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  // 节点注销：daemon 优雅退出时主动注销。
+  rpc DeregisterNode(DeregisterNodeRequest) returns (DeregisterNodeResponse);
+  // 请求沙箱分配：调度器选取最优节点后返回节点地址，由客户端直连 daemon 创建沙箱。
+  rpc AllocateSandbox(AllocateSandboxRequest) returns (AllocateSandboxResponse);
+}
+
+// ── 节点注册 ──
+
+message RegisterNodeRequest {
+  string node_id = 1;            // 节点唯一标识（daemon 实例 ID）
+  string address = 2;            // 节点 gRPC 地址（IP:port）
+  uint32 max_sandboxes = 3;      // 节点最大可承载沙箱数（0=无限制）
+  string version = 4;            // daemon 版本号
+}
+
+message RegisterNodeResponse {
+  bool accepted = 1;             // 是否接受注册
+  string scheduler_id = 2;       // 调度器实例 ID
+}
+
+// ── 心跳 ──
+
+message NodeLoad {
+  double cpu_percent = 1;        // CPU 使用率（0.0-100.0）
+  double mem_percent = 2;        // 内存使用率（0.0-100.0）
+  uint32 active_sandboxes = 3;   // 当前活跃沙箱数
+  uint32 idle_sandboxes = 4;     // 池中空闲沙箱数
+  uint64 uptime_secs = 5;        // daemon 运行时长
+}
+
+message HeartbeatRequest {
+  string node_id = 1;
+  NodeLoad load = 2;
+}
+
+message HeartbeatResponse {
+  bool acknowledged = 1;
+}
+
+// ── 节点注销 ──
+
+message DeregisterNodeRequest {
+  string node_id = 1;
+}
+
+message DeregisterNodeResponse {
+  bool success = 1;
+}
+
+// ── 沙箱分配 ──
+
+message AllocateSandboxRequest {
+  string tenant_id = 1;          // 租户标识
+  string config_toml = 2;        // SandboxConfig 的 TOML 表示
+  uint64 ttl_secs = 3;           // 沙箱存活时限
+  uint64 max_commands = 4;       // 最大命令执行次数
+}
+
+message AllocateSandboxResponse {
+  // 调度决策
+  string node_id = 1;            // 分配的节点 ID
+  string node_address = 2;       // 分配的节点 gRPC 地址
+  // 当无可用节点时 sandbox_id 为空且 error 字段说明原因
+  string sandbox_id = 3;         // 节点上已创建的 sandbox_id
+  string created_at = 4;         // ISO 8601 时间戳
+  string error = 5;              // 调度失败原因（选填）
+}

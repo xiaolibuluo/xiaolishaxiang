@@ -17,6 +17,7 @@ members = [
     "crates/xs-cli",
     "crates/xs-daemon",
     "crates/xs-policy",
+    "crates/xs-scheduler",
 ]
 
 [workspace.package]
