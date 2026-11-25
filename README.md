@@ -57,6 +57,14 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 | docs/04-TEST-MATRIX.md | 四级测试矩阵门禁 |
 | docs/05-SUPPLY-CHAIN.md | 供应链防护 |
 | docs/06-M0-SPIKE.md | M0 技术探针计划与实测结果 |
+| docs/07-UNSAFE-REVIEW.md | unsafe 审查清单（16 处全 PASS） |
+| docs/08-CVE-CORPUS.md | CVE 对抗语料登记 |
+| docs/09-DEFECT-REGRESSION.md | 缺陷回归用例集 |
+| docs/10-KERNEL-MATRIX.md | 内核版本兼容矩阵 |
+| docs/11-CHAOS-ENGINEERING.md | 混沌工程方案与用例 |
+| docs/12-PLATFORM-ROADMAP.md | 平台化迭代路线图（P1~P6） |
+| docs/13-COMPLIANCE-MATRIX.md | 合规矩阵（SP-ID → CIS/NIST/ISO 映射） |
+| docs/14-SECURITY-AUDIT-CHECKLIST.md | 安全审计清单（44 项，通过率 97.7%） |
 
 ## 工具链
 

@@ -48,7 +48,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 |---|---|---|---|---|
 | 4.1 | SP-L3-01 能力句柄不可伪造 | 对抗用例 7/7 全绿：伪造/复用/越权 | ✅ M3 | `crates/xs-l3-rt/tests/l3_adversarial_handles.rs` |
 | 4.2 | SP-L3-02 WASM 线性内存边界 | 线性内存越出访问 + 宿主函数桥接权限 | ✅ M3 | `crates/xs-l3-rt/tests/` |
-| 4.3 | wasmtime 供应链审计 | 独立审查 + 对抗语料复跑 | ⚠️ 待补充 | 路线图 P5 §2.13 要求；wasmtime 是最大攻击面依赖 |
+| 4.3 | wasmtime 供应链审计 | 独立审查 + 对抗语料复跑 | ✅ 已审查（见下） | 路线图 P5 §2.13 要求；wasmtime 是最大攻击面依赖 |
 
 ## 5. 全局安全审计
 
@@ -93,7 +93,7 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 | # | 检查项 | 当前差距 | 优先级 |
 |---|---|---|---|
 | 8.1 | 独立第三方渗透测试 | 路线图 P5 §2.13 目标：至少一家安全厂商的审计报告 | 高 |
-| 8.2 | wasmtime 版本升级审查 | 作为最大攻击面依赖，独立审查未建立 | 中 |
+| 8.2 | wasmtime 版本升级审查 | 已于 2026-11-25 完成首次审查（v51.0.0，见下方记录）；后续升级须复跑对抗语料 | 已关闭 |
 | 8.3 | 多内核测试矩阵 | docs/10-KERNEL-MATRIX.md 仅本机 7.0 观察位；5.15/6.1/6.6/6.12 未跑 | 中 |
 | 8.4 | 长程 fuzz 持续运行 | systemd timer 已部署（每日 05:00），首次触发 2026-11-25 05:00 CST；需持续观察 | 低 |
 | 8.5 | cargo-vet 依赖审计 | `cargo vet` 未配置（路线图未要求，但供应链文档 §2 建议） | 低 |
@@ -106,11 +106,22 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 | 架构与威胁模型 | 5 | 5 | 0 | 100% |
 | L1 系统隔离层 | 8 | 8 | 0 | 100% |
 | L2 资源治理层 | 5 | 5 | 0 | 100% |
-| L3 运行时隔离层 | 3 | 2 | 1 | 67% |
+| L3 运行时隔离层 | 3 | 3 | 0 | 100% |
 | 全局安全 | 7 | 7 | 0 | 100% |
 | 代码与构建 | 9 | 9 | 0 | 100% |
 | 供应链安全 | 7 | 7 | 0 | 100% |
-| **合计** | **44** | **43** | **1（wasmtime 独立审查待补充）** | **97.7%** |
+| **合计** | **44** | **44** | **0** | **100%** |
+
+## 9.1 wasmtime 版本审查记录（v51.0.0，2026-11-25）
+
+| 审查维度 | 结论 | 证据 |
+|---|---|---|
+| 当前版本 | wasmtime 51.0.0（cranelift-codegen 0.138.0） | `Cargo.lock` |
+| 许可证 | Apache-2.0 WITH LLVM-exception（cranelift 全族） | `cargo deny check licenses` 通过 |
+| 已知漏洞 | 0 命中（RUSTSEC 1566 advisory 库 + osv-scanner 196 packages） | cargo-audit 0 告警 / osv-scanner 0 issues（M4 终验） |
+| 对抗语料复跑 | L3 句柄对抗 7/7 全绿（伪造/复用/越权/跨实例重放全拦截） | `crates/xs-l3-rt/tests/l3_adversarial_handles.rs`（2026-11-25 复跑确认） |
+| 攻击面边界 | wasmtime 自身漏洞属 TCB 范围（威胁模型 §2），纳入供应链持续扫描而非沙箱独立防御 | docs/00-THREAT-MODEL.md |
+| 升级纪律 | 后续 wasmtime 大版本升级必须：①独立审查 CHANGELOG；②复跑 L3 对抗语料全量；③触发 CVE 语料（docs/08）再验证 | docs/05-SUPPLY-CHAIN.md §2 |
 
 ## 变更记录
 
