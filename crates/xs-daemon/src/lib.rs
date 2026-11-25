@@ -6,6 +6,7 @@
 
 #![allow(clippy::result_large_err)]
 
+pub mod audit;
 pub mod pool;
 
 /// proto 生成的 gRPC 代码（由 build.rs 编译 proto/xiaolishaxiang/v1/sandbox.proto）。

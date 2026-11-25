@@ -113,6 +113,13 @@ impl SandboxPool {
         }
     }
 
+    /// 从活跃列表移除指定 id（句柄被销毁、不回池时调用）。
+    pub async fn discard(&self, id: &str) {
+        let mut inner = self.inner.lock().await;
+        inner.active.retain(|x| x != id);
+        debug!("discard 移除活跃记录: {id}");
+    }
+
     pub async fn stats(&self) -> PoolStats {
         let inner = self.inner.lock().await;
         PoolStats {

@@ -12,11 +12,12 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 use axum::{extract::State, routing::get, Json, Router};
-use prometheus::{Encoder, IntCounter, IntGauge, Registry, TextEncoder};
+use prometheus::{Encoder, Histogram, HistogramOpts, IntCounter, IntGauge, Registry, TextEncoder};
 use tokio::sync::Mutex;
 use tonic::{Request, Response, Status};
 use tracing::{info, warn};
 
+use xs_daemon::audit::{AuditEventKind, AuditLog};
 use xs_daemon::pool::{PoolConfig, SandboxPool};
 use xs_daemon::sandbox_proto::sandbox_service_server::{SandboxService, SandboxServiceServer};
 use xs_daemon::sandbox_proto::*;
@@ -25,38 +26,81 @@ use xs_daemon::SandboxHandle;
 // ── Metrics ──────────────────────────────────────────────────────────
 
 struct Metrics {
-    sandbox_created: IntCounter,
+    sandbox_creates: IntCounter,
+    sandbox_destroys: IntCounter,
     command_total: IntCounter,
     command_errors: IntCounter,
+    command_latency: Histogram,
+    /// 预留给 L1 seccomp 违规计数（L1 暂未暴露读取接口，保持 0）。
+    _seccomp_violations: IntCounter,
     active_sandboxes: IntGauge,
+    pool_size: IntGauge,
+    rss_bytes: IntGauge,
     registry: Registry,
 }
 
 impl Metrics {
     fn new() -> Self {
         let registry = Registry::new();
-        let sandbox_created =
-            IntCounter::new("xs_sandbox_created_total", "Total sandboxes created").unwrap();
+        let sandbox_creates =
+            IntCounter::new("xs_sandbox_creates_total", "Total sandboxes created").unwrap();
+        let sandbox_destroys =
+            IntCounter::new("xs_sandbox_destroys_total", "Total sandboxes destroyed").unwrap();
         let command_total = IntCounter::new("xs_command_total", "Total commands executed").unwrap();
         let command_errors =
             IntCounter::new("xs_command_errors_total", "Total command execution errors").unwrap();
+        let command_latency = Histogram::with_opts(
+            HistogramOpts::new(
+                "xs_command_latency_seconds",
+                "Command execution latency in seconds",
+            )
+            .buckets(vec![
+                0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0, 5.0,
+            ]),
+        )
+        .unwrap();
+        let seccomp_violations = IntCounter::new(
+            "xs_seccomp_violations_total",
+            "Total seccomp violations (reserved, pending L1 wiring)",
+        )
+        .unwrap();
         let active_sandboxes =
-            IntGauge::new("xs_active_sandboxes", "Number of active sandboxes").unwrap();
+            IntGauge::new("xs_sandbox_active", "Number of active sandboxes").unwrap();
+        let pool_size =
+            IntGauge::new("xs_sandbox_pool_size", "Sandbox pool size (idle + active)").unwrap();
+        let rss_bytes =
+            IntGauge::new("xs_rss_bytes", "Daemon process resident memory in bytes").unwrap();
 
         registry
-            .register(Box::new(sandbox_created.clone()))
+            .register(Box::new(sandbox_creates.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(sandbox_destroys.clone()))
             .unwrap();
         registry.register(Box::new(command_total.clone())).unwrap();
         registry.register(Box::new(command_errors.clone())).unwrap();
         registry
+            .register(Box::new(command_latency.clone()))
+            .unwrap();
+        registry
+            .register(Box::new(seccomp_violations.clone()))
+            .unwrap();
+        registry
             .register(Box::new(active_sandboxes.clone()))
             .unwrap();
+        registry.register(Box::new(pool_size.clone())).unwrap();
+        registry.register(Box::new(rss_bytes.clone())).unwrap();
 
         Self {
-            sandbox_created,
+            sandbox_creates,
+            sandbox_destroys,
             command_total,
             command_errors,
+            command_latency,
+            _seccomp_violations: seccomp_violations,
             active_sandboxes,
+            pool_size,
+            rss_bytes,
             registry,
         }
     }
@@ -79,6 +123,8 @@ struct SandboxServiceImpl {
     pool: Arc<SandboxPool>,
     active: Arc<Mutex<HashMap<String, SandboxHandle>>>,
     metrics: Arc<Metrics>,
+    start_time: SystemTime,
+    audit: AuditLog,
 }
 
 #[tonic::async_trait]
@@ -130,6 +176,9 @@ impl SandboxService for SandboxServiceImpl {
         match result {
             Ok(status) => {
                 self.metrics.command_total.inc();
+                self.metrics
+                    .command_latency
+                    .observe(latency as f64 / 1_000_000.0);
                 let exit_code = match status {
                     xs_api::ExitStatus::Exited(code) => code,
                     xs_api::ExitStatus::Signaled(sig) => {
@@ -161,19 +210,41 @@ impl SandboxService for SandboxServiceImpl {
         request: Request<CreateSandboxRequest>,
     ) -> Result<Response<CreateSandboxResponse>, Status> {
         let req = request.into_inner();
-        let handle = self
-            .pool
-            .acquire(&req.tenant_id, &req.config_toml)
-            .await
-            .map_err(|e| Status::internal(format!("创建沙箱失败: {e}")))?;
+        let trace_id = uuid::Uuid::new_v4().to_string();
+        let handle = match self.pool.acquire(&req.tenant_id, &req.config_toml).await {
+            Ok(h) => h,
+            Err(e) => {
+                self.audit
+                    .record(
+                        AuditEventKind::Create,
+                        &trace_id,
+                        &req.tenant_id,
+                        "",
+                        "error",
+                        Some(e.clone()),
+                    )
+                    .await;
+                return Err(Status::internal(format!("创建沙箱失败: {e}")));
+            }
+        };
         let sandbox_id = handle.id.clone();
         let created_at = system_time_to_iso8601(&handle.created_at);
         self.active.lock().await.insert(sandbox_id.clone(), handle);
-        self.metrics.sandbox_created.inc();
+        self.metrics.sandbox_creates.inc();
         self.metrics
             .active_sandboxes
             .set(self.active.lock().await.len() as i64);
-        info!("沙箱创建: {sandbox_id} tenant={}", req.tenant_id);
+        self.audit
+            .record(
+                AuditEventKind::Create,
+                &trace_id,
+                &req.tenant_id,
+                &sandbox_id,
+                "ok",
+                None,
+            )
+            .await;
+        info!(trace_id = %trace_id, sandbox_id = %sandbox_id, tenant_id = %req.tenant_id, "沙箱创建");
         Ok(Response::new(CreateSandboxResponse {
             sandbox_id,
             created_at,
@@ -185,6 +256,7 @@ impl SandboxService for SandboxServiceImpl {
         request: Request<RunCommandRequest>,
     ) -> Result<Response<RunCommandResponse>, Status> {
         let req = request.into_inner();
+        let trace_id = uuid::Uuid::new_v4().to_string();
         let mut active = self.active.lock().await;
         let handle = active
             .get_mut(&req.sandbox_id)
@@ -218,13 +290,26 @@ impl SandboxService for SandboxServiceImpl {
         match result {
             Ok(status) => {
                 self.metrics.command_total.inc();
+                self.metrics
+                    .command_latency
+                    .observe(latency as f64 / 1_000_000.0);
                 let exit_code = match status {
                     xs_api::ExitStatus::Exited(code) => code,
                     xs_api::ExitStatus::Signaled(sig) => {
-                        warn!("沙箱 {} 命令被信号 {} 终止", req.sandbox_id, sig);
+                        warn!(trace_id = %trace_id, sandbox_id = %req.sandbox_id, signal = sig, "命令被信号终止");
                         -sig
                     }
                 };
+                self.audit
+                    .record(
+                        AuditEventKind::Run,
+                        &trace_id,
+                        "",
+                        &req.sandbox_id,
+                        "ok",
+                        Some(format!("exit_code={exit_code} latency_us={latency}")),
+                    )
+                    .await;
                 Ok(Response::new(RunCommandResponse {
                     exit_code,
                     stdout: String::new(),
@@ -234,7 +319,17 @@ impl SandboxService for SandboxServiceImpl {
             }
             Err(e) => {
                 self.metrics.command_errors.inc();
-                warn!("沙箱 {} 命令执行失败: {}", req.sandbox_id, e);
+                self.audit
+                    .record(
+                        AuditEventKind::Run,
+                        &trace_id,
+                        "",
+                        &req.sandbox_id,
+                        "error",
+                        Some(e.to_string()),
+                    )
+                    .await;
+                warn!(trace_id = %trace_id, sandbox_id = %req.sandbox_id, error = %e, "命令执行失败");
                 Err(Status::internal(format!("命令执行失败: {e}")))
             }
         }
@@ -245,17 +340,39 @@ impl SandboxService for SandboxServiceImpl {
         request: Request<DestroySandboxRequest>,
     ) -> Result<Response<DestroySandboxResponse>, Status> {
         let req = request.into_inner();
+        let trace_id = uuid::Uuid::new_v4().to_string();
         let mut active = self.active.lock().await;
         match active.remove(&req.sandbox_id) {
             Some(handle) => {
+                self.metrics.sandbox_destroys.inc();
                 self.metrics.active_sandboxes.set(active.len() as i64);
-                info!(
-                    "沙箱销毁: {} commands={}",
-                    req.sandbox_id, handle.command_count
-                );
+                self.pool.discard(&handle.id).await;
+                self.audit
+                    .record(
+                        AuditEventKind::Destroy,
+                        &trace_id,
+                        &handle.tenant_id,
+                        &req.sandbox_id,
+                        "ok",
+                        Some(format!("command_count={}", handle.command_count)),
+                    )
+                    .await;
+                info!(trace_id = %trace_id, sandbox_id = %req.sandbox_id, command_count = handle.command_count, "沙箱销毁");
                 Ok(Response::new(DestroySandboxResponse { success: true }))
             }
-            None => Err(Status::not_found(format!("沙箱 {} 不存在", req.sandbox_id))),
+            None => {
+                self.audit
+                    .record(
+                        AuditEventKind::Destroy,
+                        &trace_id,
+                        "",
+                        &req.sandbox_id,
+                        "error",
+                        Some("not_found".to_string()),
+                    )
+                    .await;
+                Err(Status::not_found(format!("沙箱 {} 不存在", req.sandbox_id)))
+            }
         }
     }
 
@@ -273,7 +390,7 @@ impl SandboxService for SandboxServiceImpl {
             rss_kb: report.rss_kb,
             pool_active: (stats.active + active_count) as u32,
             pool_idle: stats.idle as u32,
-            uptime_secs: 0,
+            uptime_secs: self.start_time.elapsed().unwrap_or_default().as_secs(),
         }))
     }
 
@@ -348,6 +465,25 @@ fn is_leap_year(y: i64) -> bool {
     (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
 }
 
+/// 读取 /proc/self/status 的 VmRSS（kB），返回字节数；失败返回 0。
+fn current_rss_bytes() -> i64 {
+    let Ok(status) = std::fs::read_to_string("/proc/self/status") else {
+        return 0;
+    };
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix("VmRSS:") {
+            let kb: i64 = rest
+                .trim()
+                .trim_end_matches("kB")
+                .trim()
+                .parse()
+                .unwrap_or(0);
+            return kb * 1024;
+        }
+    }
+    0
+}
+
 // ── HTTP 路由处理 ───────────────────────────────────────────────────
 
 async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
@@ -381,6 +517,12 @@ async fn live_handler() -> Json<serde_json::Value> {
 }
 
 async fn metrics_handler(State(state): State<Arc<AppState>>) -> String {
+    let stats = state.pool.stats().await;
+    state
+        .metrics
+        .pool_size
+        .set((stats.idle + stats.active) as i64);
+    state.metrics.rss_bytes.set(current_rss_bytes());
     let encoder = TextEncoder::new();
     let metric_families = state.metrics.registry.gather();
     let mut buffer = vec![];
@@ -407,12 +549,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let active = Arc::new(Mutex::new(HashMap::new()));
     let metrics = Arc::new(Metrics::new());
     let start_time = SystemTime::now();
+    let audit = AuditLog::new(PathBuf::from("audit.jsonl")).await;
 
     // gRPC server
     let svc = SandboxServiceImpl {
         pool: pool.clone(),
         active: active.clone(),
         metrics: metrics.clone(),
+        start_time,
+        audit,
     };
 
     let addr_grpc: SocketAddr = "0.0.0.0:50051".parse()?;
