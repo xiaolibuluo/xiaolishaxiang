@@ -1,0 +1,49 @@
+// Copyright (C) 小黎的部落（www.qingdujian.com）
+// SPDX-License-Identifier: AGPL-3.0-only
+
+//! xiaolishaxiang 调度器二进制入口。
+
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
+use tracing::info;
+
+use xs_scheduler::node::NodeRegistry;
+use xs_scheduler::scheduler_proto::scheduler_service_server::SchedulerServiceServer;
+use xs_scheduler::service::SchedulerServiceImpl;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    let scheduler_id = format!("scheduler-{}", uuid::Uuid::new_v4());
+    info!(
+        scheduler_id = %scheduler_id,
+        version = env!("CARGO_PKG_VERSION"),
+        "xiaolishaxiang 调度器启动"
+    );
+
+    let registry = NodeRegistry::new();
+    let svc = Arc::new(SchedulerServiceImpl {
+        registry: registry.clone(),
+        scheduler_id: scheduler_id.clone(),
+        gc_lock: Arc::new(Mutex::new(())),
+    });
+    svc.start_gc();
+    info!("节点 GC 已启动（10s 清理间隔，15s 心跳超时）");
+
+    let addr: SocketAddr = "0.0.0.0:50052".parse()?;
+    info!("调度器 gRPC 监听 {addr}");
+
+    tonic::transport::Server::builder()
+        .add_service(SchedulerServiceServer::from_arc(svc))
+        .serve(addr)
+        .await?;
+
+    Ok(())
+}

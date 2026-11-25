@@ -8,6 +8,7 @@
 
 pub mod audit;
 pub mod pool;
+pub mod scheduler_client;
 pub mod tenant;
 
 /// proto 生成的 gRPC 代码（由 build.rs 编译 proto/xiaolishaxiang/v1/sandbox.proto）。

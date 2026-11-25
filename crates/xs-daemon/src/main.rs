@@ -21,6 +21,7 @@ use xs_daemon::audit::{AuditEventKind, AuditLog};
 use xs_daemon::pool::{PoolConfig, SandboxPool};
 use xs_daemon::sandbox_proto::sandbox_service_server::{SandboxService, SandboxServiceServer};
 use xs_daemon::sandbox_proto::*;
+use xs_daemon::scheduler_client::SchedulerClient;
 use xs_daemon::tenant::TenantRegistry;
 use xs_daemon::SandboxHandle;
 
@@ -711,6 +712,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let registry = TenantRegistry::load("/etc/xiaolishaxiang/tenants", 60).await;
     registry.start_hot_reload();
     info!(tenants = registry.len().await, "租户注册表已加载");
+
+    // P4：向调度器注册（环境变量 XS_SCHEDULER_ADDR，缺省 localhost:50052）
+    let scheduler_addr =
+        std::env::var("XS_SCHEDULER_ADDR").unwrap_or_else(|_| "localhost:50052".to_string());
+    let _scheduler = SchedulerClient::connect_and_register(
+        &scheduler_addr,
+        "localhost:50051",
+        pool.clone(),
+        active.clone(),
+        start_time,
+    )
+    .await
+    .ok();
 
     // gRPC server
     let svc = SandboxServiceImpl {
