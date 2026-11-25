@@ -4,6 +4,7 @@
 //! 沙箱池集成测试：并发 acquire/release、限流、生命周期完整链路。
 //! 本测试使用真实的 Sandbox 构建与命令执行，验证池在 release 模式下的健壮性。
 
+use serial_test::serial;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -42,6 +43,7 @@ fn sleep_cmd(secs: u64) -> SandboxCommand {
 // ── 并发 acquire/release ──
 
 #[tokio::test]
+#[serial]
 async fn concurrent_acquire_release_no_panic() {
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     pool.warmup(4, "test-tenant", MINIMAL_CONFIG)
@@ -55,7 +57,7 @@ async fn concurrent_acquire_release_no_panic() {
             let mut h = pool
                 .acquire("test-tenant", MINIMAL_CONFIG)
                 .await
-                .expect(&format!("task {i}: acquire"));
+                .unwrap_or_else(|_| panic!("task {i}: acquire"));
             let cmd = if i % 2 == 0 { true_cmd() } else { exit_cmd(1) };
             let _ = h.sandbox.run(cmd);
             h.command_count += 1;
@@ -76,6 +78,7 @@ async fn concurrent_acquire_release_no_panic() {
 // ── 池耗尽后动态创建 ──
 
 #[tokio::test]
+#[serial]
 async fn pool_exhaustion_creates_dynamic_sandbox() {
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     // 不预热：池为空
@@ -99,6 +102,7 @@ async fn pool_exhaustion_creates_dynamic_sandbox() {
 // ── 并发限流：max_size 上限 ──
 
 #[tokio::test]
+#[serial]
 async fn pool_respects_max_size_on_release() {
     let config = PoolConfig {
         max_size: 3,
@@ -128,8 +132,10 @@ async fn pool_respects_max_size_on_release() {
 }
 
 // ── 命令执行与退出码透传 ──
+// 注：此测试依赖沙箱目录，并行执行时受 getcwd 隔离影响；加 #[serial] 强制串行。
 
 #[tokio::test]
+#[serial]
 async fn command_exit_code_transparent() {
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     let mut h = pool
@@ -158,6 +164,7 @@ async fn command_exit_code_transparent() {
 // ── 沙箱过期不回归 ──
 
 #[tokio::test]
+#[serial]
 async fn expired_sandbox_not_returned_to_pool() {
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     pool.warmup(1, "test-tenant", MINIMAL_CONFIG)
@@ -183,6 +190,7 @@ async fn expired_sandbox_not_returned_to_pool() {
 // ── 池 GC 清理 ──
 
 #[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn gc_cleans_stale_sandboxes() {
     let config = PoolConfig {
         gc_interval_secs: 1,
@@ -205,6 +213,7 @@ async fn gc_cleans_stale_sandboxes() {
 // ── 并发 acquire 下统计一致性 ──
 
 #[tokio::test(flavor = "multi_thread")]
+#[serial]
 async fn concurrent_stats_consistent() {
     let pool = Arc::new(SandboxPool::new(PoolConfig::default()));
     pool.warmup(8, "test-tenant", MINIMAL_CONFIG)
