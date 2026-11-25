@@ -163,7 +163,7 @@ mod tests {
                     node_id: "n1".to_string(),
                     address: "127.0.0.1:50051".to_string(),
                     max_sandboxes: 8,
-                    version: "1.0.11-dev".to_string(),
+                    version: "1.0.11".to_string(),
                 }
                 .into_request(),
             )
@@ -197,7 +197,7 @@ mod tests {
             node_id: "n1".to_string(),
             address: "127.0.0.1:50051".to_string(),
             max_sandboxes: 8,
-            version: "1.0.11-dev".to_string(),
+            version: "1.0.11".to_string(),
         };
         svc.register_node(req.clone().into_request()).await.unwrap();
         let result = svc.register_node(req.into_request()).await;
@@ -212,7 +212,7 @@ mod tests {
                 node_id: "cool".to_string(),
                 address: "10.0.0.1:50051".to_string(),
                 max_sandboxes: 16,
-                version: "1.0.11-dev".to_string(),
+                version: "1.0.11".to_string(),
             }
             .into_request(),
         )
@@ -279,7 +279,7 @@ mod tests {
                 node_id: "n1".to_string(),
                 address: "127.0.0.1:50051".to_string(),
                 max_sandboxes: 8,
-                version: "1.0.11-dev".to_string(),
+                version: "1.0.11".to_string(),
             }
             .into_request(),
         )

@@ -41,7 +41,7 @@ async fn register_node(svc: &SchedulerServiceImpl, id: &str, addr: &str, max: u3
             node_id: id.to_string(),
             address: addr.to_string(),
             max_sandboxes: max,
-            version: "1.0.11-dev".to_string(),
+            version: "1.0.11".to_string(),
         }
         .into_request(),
     )

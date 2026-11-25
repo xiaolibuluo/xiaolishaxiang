@@ -51,7 +51,7 @@ mod tests {
         NodeInfo {
             id: id.to_string(),
             address: format!("{id}:50051"),
-            version: "1.0.11-dev".to_string(),
+            version: "1.0.11".to_string(),
             max_sandboxes: max,
             load: NodeLoad {
                 cpu_percent: cpu,

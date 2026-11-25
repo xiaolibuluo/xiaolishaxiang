@@ -178,7 +178,7 @@ mod tests {
         NodeInfo {
             id: id.to_string(),
             address: format!("127.0.0.1:{}", 50050 + id.len() as u32),
-            version: "1.0.11-dev".to_string(),
+            version: "1.0.11".to_string(),
             max_sandboxes: 16,
             load: dummy_load(),
             registered_at: SystemTime::now(),
