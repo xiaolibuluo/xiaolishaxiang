@@ -1,0 +1,47 @@
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# SPDX-License-Identifier: AGPL-3.0-only
+
+# xiaolishaxiang 示例租户配置（demo 租户）
+#
+# 部署方式：拷贝到 /etc/xiaolishaxiang/tenants/{tenant_id}.toml
+#   sudo install -m 0640 demo.toml /etc/xiaolishaxiang/tenants/demo.toml
+# TenantRegistry 每 60s 按 mtime 增量热加载，无需重启 daemon。
+#
+# 文件名（不含 .toml 后缀）即 tenant_id，gRPC 请求中 CreateSandboxRequest.tenant_id
+# 须与此处一致；token 经 SHA-256 哈希后比对，配置中不存明文。
+#
+# 本示例明文 token：demo-token-xls-2026（仅用于本地开发验证，生产必须更换）
+token_sha256 = "7424af953d28c4fbd273a7c417099c94d1cceb223701e4621d1e2e3f907f2cf4"
+
+[quota]
+# 最大并发沙箱数（0 = 不限制）；超限返回 gRPC RESOURCE_EXHAUSTED
+max_sandboxes = 8
+# 单沙箱最大命令数（0 = 使用池默认值 1000）
+max_commands_per_sandbox = 500
+
+[policy]
+# 兜底动作：无规则命中时使用；allow 兼容无策略行为，可选 allow/deny/log/alert
+default_action = "allow"
+
+# 规则评估语义：
+#   1. 命中最长 pattern 的规则优先（具体例外可覆盖通配）
+#   2. 同长度多命中时 deny 优先（失败关闭：deny > alert > log > allow）
+#   3. programs 支持精确匹配（/bin/rm）与前缀匹配（以 * 结尾，如 /usr/bin/*）
+
+# 禁止高危命令（精确匹配）
+[[policy.rule]]
+name = "deny-dangerous"
+action = "deny"
+programs = ["/bin/rm", "/usr/bin/rm", "/sbin/shutdown", "/sbin/reboot"]
+
+# 放行常见运行时（前缀匹配）
+[[policy.rule]]
+name = "allow-common-runtimes"
+action = "allow"
+programs = ["/usr/bin/python*", "/usr/bin/node*", "/bin/bash", "/bin/sh"]
+
+# 审计示例：curl/wget 放行但记录（log 不阻断，alert 供告警通道消费）
+[[policy.rule]]
+name = "audit-network-tools"
+action = "log"
+programs = ["/usr/bin/curl", "/usr/bin/wget"]

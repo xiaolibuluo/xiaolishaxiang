@@ -21,6 +21,7 @@ use xs_daemon::audit::{AuditEventKind, AuditLog};
 use xs_daemon::pool::{PoolConfig, SandboxPool};
 use xs_daemon::sandbox_proto::sandbox_service_server::{SandboxService, SandboxServiceServer};
 use xs_daemon::sandbox_proto::*;
+use xs_daemon::tenant::TenantRegistry;
 use xs_daemon::SandboxHandle;
 
 // ── Metrics ──────────────────────────────────────────────────────────
@@ -125,6 +126,7 @@ struct SandboxServiceImpl {
     metrics: Arc<Metrics>,
     start_time: SystemTime,
     audit: AuditLog,
+    registry: Arc<TenantRegistry>,
 }
 
 #[tonic::async_trait]
@@ -142,6 +144,7 @@ impl SandboxService for SandboxServiceImpl {
         &self,
         request: Request<RunCommandRequest>,
     ) -> Result<Response<Self::RunCommandStreamStream>, Status> {
+        let token = extract_bearer_token(request.metadata());
         let req = request.into_inner();
         let mut active = self.active.lock().await;
         let handle = active
@@ -151,6 +154,24 @@ impl SandboxService for SandboxServiceImpl {
         if handle.is_expired() {
             warn!("沙箱 {} 已过期，拒绝流式执行", req.sandbox_id);
             return Err(Status::resource_exhausted("沙箱已过期"));
+        }
+
+        // ── P3：租户归属认证 + 策略执行 ──
+        let Some(tenant) = self.registry.get(&handle.tenant_id).await else {
+            self.metrics.command_errors.inc();
+            return Err(Status::unauthenticated("租户不存在或已注销"));
+        };
+        if !tenant.verify_token(&token) {
+            self.metrics.command_errors.inc();
+            return Err(Status::unauthenticated("token 校验失败"));
+        }
+        if !tenant.policy.evaluate(&req.program).is_allowed() {
+            self.metrics.command_errors.inc();
+            warn!(sandbox_id = %req.sandbox_id, program = %req.program, "策略拒绝流式执行");
+            return Err(Status::permission_denied(format!(
+                "策略拒绝执行: {}",
+                req.program
+            )));
         }
 
         let program = PathBuf::from(&req.program);
@@ -209,8 +230,68 @@ impl SandboxService for SandboxServiceImpl {
         &self,
         request: Request<CreateSandboxRequest>,
     ) -> Result<Response<CreateSandboxResponse>, Status> {
+        let token = extract_bearer_token(request.metadata());
         let req = request.into_inner();
         let trace_id = uuid::Uuid::new_v4().to_string();
+
+        // ── P3：租户认证 ──
+        let Some(tenant) = self.registry.get(&req.tenant_id).await else {
+            self.audit
+                .record(
+                    AuditEventKind::Create,
+                    &trace_id,
+                    &req.tenant_id,
+                    "",
+                    "error",
+                    Some("unauthenticated: unknown tenant".to_string()),
+                )
+                .await;
+            return Err(Status::unauthenticated("未知租户"));
+        };
+        if !tenant.verify_token(&token) {
+            self.audit
+                .record(
+                    AuditEventKind::Create,
+                    &trace_id,
+                    &req.tenant_id,
+                    "",
+                    "error",
+                    Some("unauthenticated: bad token".to_string()),
+                )
+                .await;
+            return Err(Status::unauthenticated("token 校验失败"));
+        }
+
+        // ── P3：配额检查（max_sandboxes，0 = 不限制）──
+        if tenant.quota.max_sandboxes > 0 {
+            let tenant_active = self
+                .active
+                .lock()
+                .await
+                .values()
+                .filter(|h| h.tenant_id == req.tenant_id)
+                .count();
+            if tenant_active >= tenant.quota.max_sandboxes as usize {
+                self.audit
+                    .record(
+                        AuditEventKind::Create,
+                        &trace_id,
+                        &req.tenant_id,
+                        "",
+                        "error",
+                        Some(format!(
+                            "quota exceeded: max_sandboxes={}",
+                            tenant.quota.max_sandboxes
+                        )),
+                    )
+                    .await;
+                return Err(Status::resource_exhausted(format!(
+                    "租户沙箱配额超限（max_sandboxes={}）",
+                    tenant.quota.max_sandboxes
+                )));
+            }
+        }
+
         let handle = match self.pool.acquire(&req.tenant_id, &req.config_toml).await {
             Ok(h) => h,
             Err(e) => {
@@ -255,6 +336,7 @@ impl SandboxService for SandboxServiceImpl {
         &self,
         request: Request<RunCommandRequest>,
     ) -> Result<Response<RunCommandResponse>, Status> {
+        let token = extract_bearer_token(request.metadata());
         let req = request.into_inner();
         let trace_id = uuid::Uuid::new_v4().to_string();
         let mut active = self.active.lock().await;
@@ -265,6 +347,47 @@ impl SandboxService for SandboxServiceImpl {
         if handle.is_expired() {
             warn!("沙箱 {} 已过期，拒绝执行", req.sandbox_id);
             return Err(Status::resource_exhausted("沙箱已过期"));
+        }
+
+        // ── P3：租户归属认证 ──
+        let tenant_id = handle.tenant_id.clone();
+        let Some(tenant) = self.registry.get(&tenant_id).await else {
+            self.metrics.command_errors.inc();
+            return Err(Status::unauthenticated("租户不存在或已注销"));
+        };
+        if !tenant.verify_token(&token) {
+            self.metrics.command_errors.inc();
+            self.audit
+                .record(
+                    AuditEventKind::Run,
+                    &trace_id,
+                    &tenant_id,
+                    &req.sandbox_id,
+                    "error",
+                    Some("unauthenticated: bad token".to_string()),
+                )
+                .await;
+            return Err(Status::unauthenticated("token 校验失败"));
+        }
+
+        // ── P3：策略执行 ──
+        if !tenant.policy.evaluate(&req.program).is_allowed() {
+            self.metrics.command_errors.inc();
+            self.audit
+                .record(
+                    AuditEventKind::Run,
+                    &trace_id,
+                    &tenant_id,
+                    &req.sandbox_id,
+                    "error",
+                    Some(format!("policy denied: {}", req.program)),
+                )
+                .await;
+            warn!(trace_id = %trace_id, sandbox_id = %req.sandbox_id, program = %req.program, "策略拒绝执行");
+            return Err(Status::permission_denied(format!(
+                "策略拒绝执行: {}",
+                req.program
+            )));
         }
 
         let program = PathBuf::from(&req.program);
@@ -304,7 +427,7 @@ impl SandboxService for SandboxServiceImpl {
                     .record(
                         AuditEventKind::Run,
                         &trace_id,
-                        "",
+                        &tenant_id,
                         &req.sandbox_id,
                         "ok",
                         Some(format!("exit_code={exit_code} latency_us={latency}")),
@@ -323,7 +446,7 @@ impl SandboxService for SandboxServiceImpl {
                     .record(
                         AuditEventKind::Run,
                         &trace_id,
-                        "",
+                        &tenant_id,
                         &req.sandbox_id,
                         "error",
                         Some(e.to_string()),
@@ -339,9 +462,32 @@ impl SandboxService for SandboxServiceImpl {
         &self,
         request: Request<DestroySandboxRequest>,
     ) -> Result<Response<DestroySandboxResponse>, Status> {
+        let token = extract_bearer_token(request.metadata());
         let req = request.into_inner();
         let trace_id = uuid::Uuid::new_v4().to_string();
         let mut active = self.active.lock().await;
+
+        // ── P3：租户归属认证（先查后删，失败不移除）──
+        if let Some(handle) = active.get(&req.sandbox_id) {
+            let allowed = match self.registry.get(&handle.tenant_id).await {
+                Some(t) => t.verify_token(&token),
+                None => false,
+            };
+            if !allowed {
+                self.audit
+                    .record(
+                        AuditEventKind::Destroy,
+                        &trace_id,
+                        &handle.tenant_id,
+                        &req.sandbox_id,
+                        "error",
+                        Some("unauthenticated".to_string()),
+                    )
+                    .await;
+                return Err(Status::unauthenticated("token 校验失败"));
+            }
+        }
+
         match active.remove(&req.sandbox_id) {
             Some(handle) => {
                 self.metrics.sandbox_destroys.inc();
@@ -418,6 +564,16 @@ impl SandboxService for SandboxServiceImpl {
 }
 
 // ── 时间戳工具 ─────────────────────────────────────────────────────
+
+/// 从 gRPC metadata 提取 Bearer token；缺失或格式错误返回空字符串。
+fn extract_bearer_token(metadata: &tonic::metadata::MetadataMap) -> String {
+    metadata
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .unwrap_or("")
+        .to_string()
+}
 
 fn system_time_to_iso8601(t: &SystemTime) -> String {
     let d = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
@@ -551,6 +707,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = SystemTime::now();
     let audit = AuditLog::new(PathBuf::from("audit.jsonl")).await;
 
+    // P3：租户注册表（认证 + 配额 + 策略），60s 周期热加载
+    let registry = TenantRegistry::load("/etc/xiaolishaxiang/tenants", 60).await;
+    registry.start_hot_reload();
+    info!(tenants = registry.len().await, "租户注册表已加载");
+
     // gRPC server
     let svc = SandboxServiceImpl {
         pool: pool.clone(),
@@ -558,6 +719,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         metrics: metrics.clone(),
         start_time,
         audit,
+        registry,
     };
 
     let addr_grpc: SocketAddr = "0.0.0.0:50051".parse()?;
