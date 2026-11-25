@@ -1,0 +1,4 @@
+# Copyright (C) 小黎的部落（www.qingdujian.com）
+# SPDX-License-Identifier: AGPL-3.0-only
+min_assurance = "A-"
+allow_io_uring = false
