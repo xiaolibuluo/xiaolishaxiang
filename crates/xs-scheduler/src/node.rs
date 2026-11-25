@@ -141,6 +141,17 @@ impl NodeRegistry {
     pub async fn get(&self, node_id: &str) -> Option<NodeInfo> {
         self.inner.read().await.get(node_id).cloned()
     }
+
+    /// 设置指定节点的最后心跳时间（仅用于集成测试/故障注入）。
+    ///
+    /// 节点不存在时静默忽略。
+    #[doc(hidden)]
+    pub async fn set_last_heartbeat_for_test(&self, node_id: &str, time: SystemTime) {
+        let mut inner = self.inner.write().await;
+        if let Some(info) = inner.get_mut(node_id) {
+            info.last_heartbeat = time;
+        }
+    }
 }
 
 impl Default for NodeRegistry {
