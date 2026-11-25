@@ -113,6 +113,44 @@ xs-core、xs-l1-sys、xs-l2-res、xs-l3-rt、xs-api、xs-cli、xs-daemon、xs-po
 | docs/13-COMPLIANCE-MATRIX.md | 合规矩阵 |
 | docs/14-SECURITY-AUDIT-CHECKLIST.md | 安全审计清单（44 项，通过率 100%） |
 
+## 发布校验
+
+发布产物（GitHub Release）均带 SHA-256 校验清单与 GPG 分离签名，签名的 git tag 与提交可溯源。
+
+### 签名公钥
+
+| 项 | 值 |
+|---|---|
+| 密钥 ID | 709D26EE91ABCC02 |
+| 指纹 | C3D5 3145 4F8B 2864 6760 5D2E 709D 26EE 91AB CC02 |
+| 持有者 | 小黎的部落 <xiaolibuluo@163.com> |
+| 类型 | RSA 4096 |
+
+获取方式（三路任选其一）：
+
+```bash
+# 公钥服务器
+gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys 709D26EE91ABCC02
+gpg --keyserver hkps://keys.openpgp.org --recv-keys 709D26EE91ABCC02
+# 或直接下载 Release 资产 xiaolishaxiang-release-signing-key.asc 后 gpg --import
+```
+
+### 校验流程
+
+```bash
+sha256sum -c SHA256SUMS.txt
+gpg --verify xiaolishaxiang-1.0.11-x86_64-linux.tar.gz.asc xiaolishaxiang-1.0.11-x86_64-linux.tar.gz
+```
+
+### 数字水印验证
+
+三个二进制均内嵌三层数字水印（小黎的部落），可离线验证：
+
+```bash
+strings xs-cli | grep xiaolishaxiang-watermark   # 二进制静态段
+./xs-cli --version                                # 运行时输出
+```
+
 ## 版权
 
 AGPL-3.0-only。版权头由 REUSE 权威校验（ci/check_copyright.sh）。
