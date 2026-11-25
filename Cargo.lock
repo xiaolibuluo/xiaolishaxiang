@@ -2650,7 +2650,7 @@ dependencies = [
 
 [[package]]
 name = "xs-api"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "serde",
  "xs-core",
@@ -2659,7 +2659,7 @@ dependencies = [
 
 [[package]]
 name = "xs-cli"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "serde_json",
  "xs-api",
@@ -2668,7 +2668,7 @@ dependencies = [
 
 [[package]]
 name = "xs-core"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -2677,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "xs-daemon"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "axum",
  "hyper",
@@ -2702,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "xs-l1-sys"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "libc",
  "xs-core",
@@ -2710,14 +2710,14 @@ dependencies = [
 
 [[package]]
 name = "xs-l2-res"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "xs-l3-rt"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "wasmtime",
  "xs-core",
@@ -2725,7 +2725,7 @@ dependencies = [
 
 [[package]]
 name = "xs-policy"
-version = "1.0.10-dev"
+version = "1.0.11-dev"
 dependencies = [
  "serde",
  "toml 0.8.23",
