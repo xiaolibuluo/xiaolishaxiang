@@ -10,6 +10,8 @@ use crate::scheduler_proto::{
     AllocateSandboxRequest, AllocateSandboxResponse, CreateSandboxRequest, CreateSandboxResponse,
     DestroySandboxRequest,
 };
+use tonic::metadata::MetadataValue;
+use tonic::Request;
 
 /// 向调度器请求分配最优节点上的沙箱。
 ///
@@ -48,6 +50,8 @@ pub async fn allocate_sandbox(
 
 /// 直连 daemon 节点创建沙箱实例。
 ///
+/// `token` 为租户的明文 Bearer token，通过 gRPC metadata `authorization` 头传递。
+///
 /// # Errors
 /// 连接失败或 gRPC 错误时返回错误消息。
 pub async fn create_sandbox_on_node(
@@ -56,17 +60,23 @@ pub async fn create_sandbox_on_node(
     config_toml: &str,
     ttl_secs: u64,
     max_commands: u64,
+    token: &str,
 ) -> Result<CreateSandboxResponse, String> {
     let mut client = SandboxServiceClient::connect(format!("http://{node_addr}"))
         .await
         .map_err(|e| format!("连接 daemon {node_addr} 失败: {e}"))?;
 
-    let req = CreateSandboxRequest {
+    let req_body = CreateSandboxRequest {
         tenant_id: tenant_id.to_string(),
         config_toml: config_toml.to_string(),
         ttl_secs,
         max_commands,
     };
+
+    let mut req = Request::new(req_body);
+    let bearer = MetadataValue::try_from(format!("Bearer {token}"))
+        .map_err(|e| format!("构造 Bearer token 失败: {e}"))?;
+    req.metadata_mut().insert("authorization", bearer);
 
     let resp = client
         .create_sandbox(req)
@@ -78,14 +88,25 @@ pub async fn create_sandbox_on_node(
 }
 
 /// 直连 daemon 节点销毁沙箱实例。
-pub async fn destroy_sandbox_on_node(node_addr: &str, sandbox_id: &str) -> Result<(), String> {
+///
+/// `token` 为租户的明文 Bearer token，通过 gRPC metadata `authorization` 头传递。
+pub async fn destroy_sandbox_on_node(
+    node_addr: &str,
+    sandbox_id: &str,
+    token: &str,
+) -> Result<(), String> {
     let mut client = SandboxServiceClient::connect(format!("http://{node_addr}"))
         .await
         .map_err(|e| format!("连接 daemon {node_addr} 失败: {e}"))?;
 
-    let req = DestroySandboxRequest {
+    let req_body = DestroySandboxRequest {
         sandbox_id: sandbox_id.to_string(),
     };
+
+    let mut req = Request::new(req_body);
+    let bearer = MetadataValue::try_from(format!("Bearer {token}"))
+        .map_err(|e| format!("构造 Bearer token 失败: {e}"))?;
+    req.metadata_mut().insert("authorization", bearer);
 
     client
         .destroy_sandbox(req)

@@ -197,6 +197,7 @@ struct CreateOptions {
     tenant_id: String,
     ttl_secs: u64,
     max_commands: u64,
+    token: String,
 }
 
 fn parse_create_options(extra_args: &[String]) -> CreateOptions {
@@ -204,6 +205,7 @@ fn parse_create_options(extra_args: &[String]) -> CreateOptions {
     let mut tenant_id = DEFAULT_TENANT_ID.to_string();
     let mut ttl_secs: u64 = 0;
     let mut max_commands: u64 = 0;
+    let mut token = String::new();
 
     let mut i = 0;
     while i < extra_args.len() {
@@ -218,6 +220,12 @@ fn parse_create_options(extra_args: &[String]) -> CreateOptions {
                 i += 1;
                 if i < extra_args.len() {
                     tenant_id = extra_args[i].clone();
+                }
+            }
+            "--token" => {
+                i += 1;
+                if i < extra_args.len() {
+                    token = extra_args[i].clone();
                 }
             }
             "--ttl" => {
@@ -242,6 +250,7 @@ fn parse_create_options(extra_args: &[String]) -> CreateOptions {
         tenant_id,
         ttl_secs,
         max_commands,
+        token,
     }
 }
 
@@ -287,6 +296,7 @@ async fn cmd_create(_cfg: &SandboxConfig, toml_text: &str, extra_args: &[String]
         toml_text,
         opts.ttl_secs,
         opts.max_commands,
+        &opts.token,
     )
     .await
     {
@@ -310,6 +320,7 @@ async fn cmd_scheduler_demo(args: &[String]) -> ExitCode {
     let mut scheduler_addr = DEFAULT_SCHEDULER_ADDR.to_string();
     let mut tenant_id = DEFAULT_TENANT_ID.to_string();
     let mut config_path: Option<String> = None;
+    let mut token = String::new();
 
     let mut i = 2; // 跳过程序名和子命令名
     while i < args.len() {
@@ -330,6 +341,12 @@ async fn cmd_scheduler_demo(args: &[String]) -> ExitCode {
                 i += 1;
                 if i < args.len() {
                     config_path = Some(args[i].clone());
+                }
+            }
+            "--token" => {
+                i += 1;
+                if i < args.len() {
+                    token = args[i].clone();
                 }
             }
             _ => {}
@@ -389,6 +406,7 @@ async fn cmd_scheduler_demo(args: &[String]) -> ExitCode {
         &config_toml,
         0,
         0,
+        &token,
     )
     .await
     {
@@ -404,8 +422,12 @@ async fn cmd_scheduler_demo(args: &[String]) -> ExitCode {
 
     // [3/3] 销毁
     eprintln!("[3/3] 销毁沙箱...");
-    match scheduler_client::destroy_sandbox_on_node(&alloc.node_address, &create_resp.sandbox_id)
-        .await
+    match scheduler_client::destroy_sandbox_on_node(
+        &alloc.node_address,
+        &create_resp.sandbox_id,
+        &token,
+    )
+    .await
     {
         Ok(()) => {
             eprintln!("  ✓ 已销毁 {}", create_resp.sandbox_id);
