@@ -1,8 +1,0 @@
-[33mcommit 2c07e6e80507e1be9217f88342946bcb15a82f1c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
-[36mgpg: Signature made Thu 26 Nov 2026 04:01:39 PM CST[m
-[36mgpg:                using RSA key C3D531454F8B286467605D2E709D26EE91ABCC02[m
-[36mgpg: Good signature from "小黎的部落 <xiaolibuluo@163.com>" [ultimate][m
-Author: xiaolishaxiang <sha@qingdujian.com>
-Date:   Thu Nov 26 16:01:39 2026 +0800
-
-    style(ci): cargo fmt -- l1_conflict.rs
