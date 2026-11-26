@@ -118,8 +118,7 @@ fn m4_path_grants_isolated_between_concurrent_sandboxes() {
             continue;
         }
         assert_eq!(
-            exit_code,
-            0,
+            exit_code, 0,
             "M4 路径冲突失败：{name} 的授权目录不可写或越权写对方目录未被拦截"
         );
     }
