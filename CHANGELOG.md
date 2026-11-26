@@ -6,6 +6,31 @@ Copyright (C) 小黎的部落（www.qingdujian.com）
 
 # Changelog
 
+## [1.0.12] — 2026-11-26
+
+本版本修复 P0/P1 验证报告缺陷（D1/D2/D4/D5）和 1 个依赖安全漏洞。
+
+### P0/P1 代码修复
+
+- **D5（SP-L1-06）**：seccomp 安装从引导进程移至 worker 进程，四级进程模型（supervisor→bootstrap→reaper→worker）
+  - `prepare_in_child` 拆分为 `prepare_bootstrap` + `prepare_sandbox`，保留组合函数兼容集成测试
+  - 根因：`sandbox_minimal` allowlist 默认 EPERM 拒绝 clone/fork，装过滤器后二次 fork 必然失败
+  - worker 为 PID 2（非 init），可正常接收信号；`ExitStatus::from_raw` 新增 Signal 回溯映射
+- **D1（SP-L1-04）**：`check_fd_whitelist` 语义从拒绝执行改为主动 close 白名单外 fd
+- **D2**：`audit.rs` `is_available` 改为真实判定 tracing subscriber 是否初始化
+- **D4**：`domain.rs` grants 为空时跳过 landlock 建立（B 级降级路径）
+- **`/ready` 503**：未就绪返回非 200（K8s readiness 探针语义修正）
+
+### 依赖安全
+
+- **RUSTSEC-2024-0437**（中危）：`protobuf` v2.28.0 → v3.7.2（不受控递归崩溃）
+  - `prometheus` 版本约束 0.13 → 0.14（0.14.0 已将其 protobuf 依赖升到 ≥3.7.2）
+
+### 测试
+
+- workspace 172 用例全绿（0 失败）
+- `fault_crash` 7/7、`l1_isolation_sp02_04` 6/6 适配新语义
+
 ## [1.0.11] — 2026-11-25
 
 本版本完成 P1-P4 全部功能交付：daemon 基础服务、可观测性、多租户策略引擎、调度器集群与 CLI 工具链。

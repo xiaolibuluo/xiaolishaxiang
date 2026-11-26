@@ -1414,7 +1414,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2553,15 +2553,6 @@ dependencies = [
 
 [[package]]
 name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
-dependencies = [
- "windows-targets",
-]
-
-[[package]]
-name = "windows-sys"
 version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ae137229bcbd6cdf0f7b80a31df61766145077ddf49416a728b02cb3921ff3fc"
@@ -2688,7 +2679,7 @@ dependencies = [
 
 [[package]]
 name = "xs-api"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "serde",
  "xs-core",
@@ -2697,7 +2688,7 @@ dependencies = [
 
 [[package]]
 name = "xs-cli"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "prost",
  "serde_json",
@@ -2711,7 +2702,7 @@ dependencies = [
 
 [[package]]
 name = "xs-core"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -2721,7 +2712,7 @@ dependencies = [
 
 [[package]]
 name = "xs-daemon"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "axum",
  "hyper",
@@ -2746,7 +2737,7 @@ dependencies = [
 
 [[package]]
 name = "xs-l1-sys"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "libc",
  "xs-core",
@@ -2754,14 +2745,14 @@ dependencies = [
 
 [[package]]
 name = "xs-l2-res"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "loom",
 ]
 
 [[package]]
 name = "xs-l3-rt"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "wasmtime",
  "xs-core",
@@ -2769,7 +2760,7 @@ dependencies = [
 
 [[package]]
 name = "xs-policy"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "serde",
  "toml 0.8.23",
@@ -2777,7 +2768,7 @@ dependencies = [
 
 [[package]]
 name = "xs-scheduler"
-version = "1.0.11"
+version = "1.0.12"
 dependencies = [
  "prost",
  "tokio",
