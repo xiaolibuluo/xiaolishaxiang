@@ -2666,6 +2666,7 @@ dependencies = [
  "tokio",
  "tonic",
  "tonic-build",
+ "tracing-subscriber",
  "xs-api",
  "xs-core",
 ]
@@ -2677,6 +2678,7 @@ dependencies = [
  "serde",
  "toml 0.8.23",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

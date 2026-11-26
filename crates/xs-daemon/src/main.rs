@@ -677,15 +677,23 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<serde_json::
     }))
 }
 
-async fn ready_handler(State(_state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+async fn ready_handler(State(_state): State<Arc<AppState>>) -> impl axum::response::IntoResponse {
     let report = xs_api::health();
     if report.sandbox_ok {
-        Json(serde_json::json!({"status": "ready"}))
+        (
+            axum::http::StatusCode::OK,
+            Json(serde_json::json!({"status": "ready"})),
+        )
     } else {
-        Json(serde_json::json!({
-            "status": "not_ready",
-            "reason": "sandbox health check failed"
-        }))
+        // P1 修复（验证报告第六节）：未就绪必须返回非 200，
+        // 否则 Kubernetes readiness 探针永远判定就绪，语义错误。
+        (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "status": "not_ready",
+                "reason": "sandbox health check failed"
+            })),
+        )
     }
 }
 

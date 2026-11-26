@@ -2,18 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // 本文件属于 xiaolishaxiang 项目，本版权头任何人不得更改/删除。
 
-//! L1 隔离域的 supervisor 侧进程模型（fork/exec + `prepare_in_child`）。
+//! L1 隔离域的 supervisor 侧进程模型（四级进程：supervisor → bootstrap → reaper → worker）。
 //!
-//! 进程模型（docs/03-ARCHITECTURE.md 第 1 节）：
-//!   supervisor（可信，TCB 一部分）fork 出沙箱引导子进程；
-//!   子进程执行 `prepare_in_child` 五步顺序契约后 exec 目标程序；
-//!   supervisor 通过 waitpid 管理生命周期并回收退出状态。
+//! 进程模型（SP-L1-06 四级模型）：
+//!   supervisor（可信，TCB 一部分）fork 出沙箱引导子进程（bootstrap）；
+//!   bootstrap 执行 `prepare_bootstrap` 后二次 fork 出 sandbox（reaper）；
+//!   reaper（PID ns 内 PID 1）再次 fork 出 worker（PID 2，非 init，可正常接收信号）；
+//!   worker 执行 `prepare_sandbox`（seccomp+fd 白名单）后 exec 目标程序；
+//!   reaper 通过 waitpid 回收 worker，信号转 128+sig 退出码；
+//!   bootstrap 回溯 128+sig 并 raise(sig) 透传给 supervisor。
 //!
-//! 顺序契约完整链路（子进程内，任一步失败即以非零码退出）：
+//! D5 顺序约束：seccomp 安装在 worker 内完成（sandbox_minimal allowlist
+//! 默认拒绝 clone/fork，二次 fork 必须先于过滤器安装）。
+//!
+//! 顺序契约完整链路（任一步失败即以非零码退出）：
 //!   unshare namespaces -> `no_new_privs` -> landlock 域 ->
+//!   二次 fork（PID ns 落地）-> PID 1 reaper fork worker ->
 //!   seccomp filter(TSYNC) -> fd 白名单校验(SP-L1-04) -> exec。
 
-use crate::domain::{prepare_in_child, DomainSpec};
+use crate::domain::{prepare_bootstrap, prepare_sandbox, DomainSpec};
 use xs_core::{XsError, XsResult};
 
 /// 沙箱内要执行的命令。
@@ -52,17 +59,16 @@ impl L1Domain {
         Ok(Self { spec })
     }
 
-    /// 在隔离域内启动命令，返回子进程 PID。
+    /// 在隔离域内启动命令，返回引导子进程 PID（bootstrap）。
     ///
-    /// 子进程执行 `prepare_in_child` 五步序列，任一步失败以退出码 126 退出；
-    /// exec 失败以退出码 127 退出（便于 supervisor 区分失败阶段）。
+    /// 四级进程模型：supervisor -> bootstrap -> reaper -> worker（SP-L1-06）。
+    /// bootstrap 执行 prepare_bootstrap（unshare/no_new_privs/landlock），
+    /// 二次 fork 出 reaper（PID ns 内 PID 1），reaper fork 出 worker（PID 2），
+    /// worker 执行 prepare_sandbox（seccomp+fd 白名单）再 exec。
+    /// 引导进程任一步失败以退出码 126 退出；exec 失败以退出码 127 退出。
     pub fn spawn(&self, cmd: &SandboxCommand) -> XsResult<u64> {
         // SAFETY（安全论证）：
-        // - fork() 复制当前进程；返回值 0 为子进程、>0 为父进程中的子 PID、-1 失败；
-        // - 子进程分支立即执行 prepare_in_child（纯函数式调用，不触碰父进程异步信号
-        //   不安全状态之外的资源：本实现中 prepare_in_child 只做 syscall 与 /proc 读取，
-        //   属于 fork 后单线程上下文中的安全操作集）；
-        // - 子进程任何失败路径都以 _exit 结束，不运行 atexit 钩子，避免重复冲刷父进程缓冲区。
+        // - fork() 复制当前进程；返回值 0 为子进程、>0 为父进程中的子 PID、-1 失败。
         let pid = unsafe { libc::fork() };
         if pid < 0 {
             let err = std::io::Error::last_os_error();
@@ -72,18 +78,112 @@ impl L1Domain {
             });
         }
         if pid == 0 {
-            // 子进程分支：执行顺序契约，失败以区分阶段的退出码结束
-            if let Err(e) = prepare_in_child(&self.spec) {
-                eprintln!("[xs-l1] 隔离域建立失败: {e}");
+            // ── bootstrap 分支 ──
+            // 阶段 A：prepare_bootstrap（unshare→no_new_privs→landlock）
+            // 不装 seccomp——二次 fork 必须先于过滤器（allowlist 默认拒绝 clone）
+            if let Err(e) = prepare_bootstrap(&self.spec) {
+                eprintln!("[xs-l1] bootstrap 建立失败: {e}");
                 // SAFETY：_exit 立即终止，不运行 atexit，避免污染父进程 IO 状态。
                 unsafe { libc::_exit(126) };
             }
-            // exec 目标程序（替换进程映像）
-            exec_command(cmd);
-            // exec 返回即失败
-            eprintln!("[xs-l1] exec 失败: {}", cmd.program.display());
-            // SAFETY：同上。
-            unsafe { libc::_exit(127) };
+
+            // 阶段 B：二次 fork（SP-L1-06：CLONE_NEWPID 只对后代生效）
+            // bootstrap 留在宿主 PID ns，reaper 进入新 PID ns（ns 内 PID=1）。
+            let inner = unsafe { libc::fork() };
+            if inner < 0 {
+                eprintln!(
+                    "[xs-l1] 二次 fork 失败（PID ns 落地）: {}",
+                    std::io::Error::last_os_error()
+                );
+                // SAFETY：同上。
+                unsafe { libc::_exit(125) };
+            }
+            if inner == 0 {
+                // ── reaper 分支（PID ns 内 PID 1）──
+                // PID 1（init）内核默认忽略致命信号，必须再 fork 一层：
+                //   reaper（本进程，PID 1）：waitpid 回收 worker，信号→128+sig 退出码；
+                //   worker（PID 2，非 init）：可正常接收信号，装 seccomp 后 exec。
+                let worker = unsafe { libc::fork() };
+                if worker < 0 {
+                    eprintln!(
+                        "[xs-l1] reaper fork 失败: {}",
+                        std::io::Error::last_os_error()
+                    );
+                    // SAFETY：_exit 立即终止。
+                    unsafe { libc::_exit(126) };
+                }
+                if worker == 0 {
+                    // ── worker 分支（PID 2，非 init，可正常接收信号）──
+                    // 阶段 C：prepare_sandbox（seccomp TSYNC + fd 白名单）
+                    if let Err(e) = prepare_sandbox(&self.spec) {
+                        eprintln!("[xs-l1] worker 建立失败: {e}");
+                        // SAFETY：_exit 立即终止。
+                        unsafe { libc::_exit(126) };
+                    }
+                    // 阶段 D：exec 目标程序（seccomp/landlock/no_new_privs 均随 fork 继承）
+                    exec_command(cmd);
+                    // exec 返回即失败
+                    eprintln!("[xs-l1] exec 失败: {}", cmd.program.display());
+                    // SAFETY：同上。
+                    unsafe { libc::_exit(127) };
+                }
+                // ── reaper 分支（PID 1）──
+                // 等待 worker 退出；worker 被信号杀时转译为 128+sig 退出码，
+                // 由 bootstrap 层回溯为 raise(sig) 以正确传递崩溃语义。
+                let mut wstatus: libc::c_int = 0;
+                loop {
+                    // SAFETY：waitpid(-1) 回收任意子进程（仅有 worker）；
+                    // wstatus 为栈上有效变量。
+                    let ret = unsafe { libc::waitpid(-1, &raw mut wstatus, 0) };
+                    if ret == worker {
+                        if libc::WIFEXITED(wstatus) {
+                            // SAFETY：同上。
+                            unsafe { libc::_exit(libc::WEXITSTATUS(wstatus)) };
+                        } else if libc::WIFSIGNALED(wstatus) {
+                            // 信号转译为退出码：128+sig（shell 惯例）
+                            // SAFETY：同上。
+                            unsafe { libc::_exit(128 + libc::WTERMSIG(wstatus)) };
+                        }
+                        // SAFETY：同上。
+                        unsafe { libc::_exit(129) };
+                    }
+                    if ret < 0 {
+                        // ECHILD：worker 已被他人回收，异常路径
+                        // SAFETY：同上。
+                        unsafe { libc::_exit(130) };
+                    }
+                    // 其他后代退出（防御分支，正常仅有 worker 一个子进程）
+                }
+            }
+            // ── bootstrap 分支继续 ──
+            // 等待 sandbox reaper 退出并透传退出码。
+            // reaper 退出码策略：worker 正常退出→透传退出码；
+            // worker 被信号杀→128+sig 退出码。bootstrap 直接将 reaper
+            // 的退出码透传给 supervisor（含 128+sig 编码），由
+            // ExitStatus::from_raw 逆向映射为 Signaled(sig)。
+            let mut status: libc::c_int = 0;
+            loop {
+                // SAFETY：waitpid(-1) 回收任意子进程；status 为栈上有效变量。
+                let ret = unsafe { libc::waitpid(-1, &raw mut status, 0) };
+                if ret == inner {
+                    if libc::WIFEXITED(status) {
+                        // SAFETY：_exit 立即终止；退出码由 from_raw 逆向映射。
+                        unsafe { libc::_exit(libc::WEXITSTATUS(status)) };
+                    } else if libc::WIFSIGNALED(status) {
+                        // reaper 自身被信号杀（非常规路径），转 128+sig
+                        // SAFETY：同上。
+                        unsafe { libc::_exit(128 + libc::WTERMSIG(status)) };
+                    }
+                    // SAFETY：同上。
+                    unsafe { libc::_exit(129) };
+                }
+                if ret < 0 {
+                    // ECHILD：无子进程可回收（reaper 已被他人回收，异常路径）
+                    // SAFETY：同上。
+                    unsafe { libc::_exit(130) };
+                }
+                // 其他后代退出（防御分支，正常流程 bootstrap 仅有 reaper 一个子进程）
+            }
         }
         Ok(pid as u64)
     }
@@ -127,7 +227,16 @@ pub enum ExitStatus {
 impl ExitStatus {
     fn from_raw(status: libc::c_int) -> Self {
         if libc::WIFEXITED(status) {
-            Self::Exited(libc::WEXITSTATUS(status))
+            let code = libc::WEXITSTATUS(status);
+            // 回溯 bootstrap 层的 128+sig 信号转译（shell 惯例）：
+            // bootstrap 将 worker 被信号杀退化为 _exit(128+sig)；
+            // 此处反向映射使 supervisor 感知为 Signaled(sig)，
+            // 与沙箱内进程被信号杀死的行为等价。
+            if (129..=254).contains(&code) {
+                Self::Signaled(code - 128)
+            } else {
+                Self::Exited(code)
+            }
         } else if libc::WIFSIGNALED(status) {
             Self::Signaled(libc::WTERMSIG(status))
         } else {
@@ -173,7 +282,7 @@ fn exec_command(cmd: &SandboxCommand) {
     // SAFETY（安全论证）：
     // - program 与 argv/env 缓冲区在调用期间全部存活，指针数组以 NULL 结尾；
     // - execve 成功时不返回（进程映像被替换），失败返回 -1 由调用方处理；
-    // - 这是 prepare_in_child 完成后的最后一步（顺序契约终点），exec 之后
+    // - 这是 prepare_sandbox 完成后的最后一步（顺序契约终点），exec 之后
     //   landlock/seccomp 约束随进程映像继续生效。
     unsafe {
         libc::execve(program.as_ptr(), argv_ptrs.as_ptr(), env_ptrs.as_ptr());

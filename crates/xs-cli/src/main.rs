@@ -45,6 +45,14 @@ const DEFAULT_TENANT_ID: &str = "default";
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // D2 修复：初始化 tracing subscriber（审计 no-record => no-execute 判定的前提）。
+    // 默认 INFO 级；XS_LOG 环境变量可覆盖（如 XS_LOG=debug）。
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with_target(false)
+        .try_init();
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
         eprintln!(

@@ -98,7 +98,11 @@ impl AuditSink for TracingAuditSink {
     }
 
     fn is_available(&self) -> bool {
-        true
+        // D2 修复：真实判定 tracing subscriber 是否已初始化且接受 INFO 级事件。
+        // 验证报告 D2 实证：此前硬编码 true，使 no-record => no-execute 判定
+        // 在 CLI 路径（未初始化 subscriber）上形同虚设，事件静默丢弃。
+        // enabled! 在无 subscriber 时返回 false，调用方据此 fail-closed。
+        tracing::enabled!(tracing::Level::INFO)
     }
 }
 
@@ -115,6 +119,14 @@ mod tests {
 
     #[test]
     fn tracing_sink_available_and_records() {
+        // D2 修复配套：is_available 现为真实判定（subscriber 是否初始化），
+        // 测试进程需先初始化 subscriber（幂等，重复调用安全）。
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .try_init();
         let sink = TracingAuditSink;
         assert!(sink.is_available());
         let e = AuditEvent::new(AuditKind::CapabilityRequest, None, "sb-1", "fs.read");

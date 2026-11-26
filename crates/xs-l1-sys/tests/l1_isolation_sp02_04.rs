@@ -147,8 +147,13 @@ fn sp_l1_02_pr_set_dumpable_zero_holds() {
 
 // ---------------------------------------------------------------- SP-L1-04
 
-/// SP-L1-04 反向用例：父进程故意遗留一个额外 fd（pipe 读端），
-/// `prepare_in_child` 的 fd 白名单校验必须检出并以 126 失败（fail-closed）。
+/// SP-L1-04 反向用例（D1 修复后语义）：父进程故意遗留一个额外 fd（pipe 读端），
+/// `prepare_in_child` 的 check_fd_whitelist 应主动关闭该 fd（D1：不继承语义），
+/// 调用返回 Ok 且 fd 在 exec 前已不可访问。
+///
+/// D1 修复方向修正：『最小 fd 继承』的正确语义是白名单外的 fd 不得到达
+/// exec 后的沙箱进程——即主动关闭（不继承），而非检出即拒绝执行。
+/// 本用例验证：prepare_in_child 成功 → 违规 fd 已被关闭（fstat 返回 EBADF）。
 #[test]
 fn sp_l1_04_inherited_fd_violation_detected() {
     let _guard = FD_TEST_LOCK.lock().unwrap();
@@ -157,17 +162,28 @@ fn sp_l1_04_inherited_fd_violation_detected() {
     }
     let mut fds = [0i32; 2];
     assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0, "pipe 失败");
-    // 读端（fds[0]）不在白名单 {0,1,2}，子进程继承后必须被检出。
+    let pipe_read_fd = fds[0];
+    // 读端（pipe_read_fd）不在白名单 {0,1,2}，子进程继承后必须被关闭。
     run_child_expect(
-        || {
+        move || {
             let spec = DomainSpec::minimal();
-            match prepare_in_child(&spec) {
-                Ok(()) => 1,   // 违规 fd 未被检出 = 测试失败
-                Err(_) => 126, // fail-closed：契约退出码
+            // D1 语义：prepare_in_child 成功（fd 被关闭，不拒绝执行）
+            if prepare_in_child(&spec).is_err() {
+                return 126; // prepare_in_child 自身的 fail-closed
             }
+            // 验证：违规 fd 已被 check_fd_whitelist 关闭（fstat 应返回 EBADF）
+            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+            let ret = unsafe { libc::fstat(pipe_read_fd, stat.as_mut_ptr()) };
+            let is_closed =
+                ret == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EBADF);
+            if !is_closed {
+                // SP-L1-04 违规：继承 fd 未被关闭
+                return 1;
+            }
+            0 // fd 已关闭 = 合规
         },
-        126,
-        "SP-L1-04 失败：继承的违规 fd 未被白名单校验检出",
+        0,
+        "SP-L1-04 失败：继承的违规 fd 未被 check_fd_whitelist 关闭",
     );
     unsafe {
         libc::close(fds[0]);
@@ -175,7 +191,8 @@ fn sp_l1_04_inherited_fd_violation_detected() {
     }
 }
 
-/// SP-L1-04 正向用例：白名单放宽到包含遗留 fd `时，prepare_in_child` 通过。
+/// SP-L1-04 正向用例（D1 修复后语义）：白名单放宽到包含遗留 fd 时，
+/// `prepare_in_child` 通过且该 fd 在沙箱内保持可访问（不被误关闭）。
 #[test]
 fn sp_l1_04_whitelisted_fd_passes() {
     let _guard = FD_TEST_LOCK.lock().unwrap();
@@ -191,20 +208,27 @@ fn sp_l1_04_whitelisted_fd_passes() {
             // 白名单纳入全部继承 fd（含 extra_fd）：合规继承应通过校验。
             spec.fd_whitelist.extend(inherited);
             spec.fd_whitelist.push(extra_fd);
-            match prepare_in_child(&spec) {
-                Ok(()) => 0,
-                Err(_) => 1,
+            if prepare_in_child(&spec).is_err() {
+                return 1; // prepare_in_child 自身失败
             }
+            // D1 语义验证：白名单内 fd 不应被关闭（fstat 应成功）
+            let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+            let ret = unsafe { libc::fstat(extra_fd, stat.as_mut_ptr()) };
+            if ret == -1 {
+                return 2; // 白名单内 fd 被误关闭
+            }
+            0
         },
         0,
-        "SP-L1-04 失败：白名单内的继承 fd 被误拒",
+        "SP-L1-04 失败：白名单内的继承 fd 被误拒或误关闭",
     );
 }
 
-/// SP-L1-04 合规形态：白名单覆盖 fork 时父进程实际持有的 fd，最小域建立通过。
+/// SP-L1-04 合规形态（D1 修复后语义）：白名单覆盖 fork 时父进程实际持有的 fd，
+/// `prepare_in_child` 通过（非白名单 fd 被关闭，不拒绝执行）。
 ///
 /// 测试运行器自身持有框架 fd（M2 诊断实证 fork 时继承 18/28），属于
-/// docs/01 允许的『supervisor 最小 fd 集』的测试等效物；违规检出语义由
+/// docs/01 允许的『supervisor 最小 fd 集』的测试等效物；违规 fd 关闭语义由
 /// `sp_l1_04_inherited_fd_violation_detected` 反向用例验证。
 #[test]
 fn sp_l1_04_minimal_spec_passes_clean() {
@@ -217,10 +241,12 @@ fn sp_l1_04_minimal_spec_passes_clean() {
         move || {
             let mut spec = DomainSpec::minimal();
             spec.fd_whitelist.extend(inherited);
-            match prepare_in_child(&spec) {
-                Ok(()) => 0,
-                Err(_) => 1,
+            // D1 语义：非白名单 fd 被关闭而不是拒绝执行——
+            // prepare_in_child 成功即最小域建立完成。
+            if prepare_in_child(&spec).is_err() {
+                return 1;
             }
+            0
         },
         0,
         "SP-L1-04 失败：合规继承集下最小域应建立成功",

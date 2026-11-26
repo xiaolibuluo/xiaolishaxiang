@@ -12,7 +12,7 @@
 //!   5. `L1Domain::establish` 建立域描述；
 //!   6. `run()` 在域内启动命令并回收退出状态。
 
-use xs_core::{CapabilityReport, SandboxConfig, XsResult};
+use xs_core::{AuditSink, CapabilityReport, SandboxConfig, XsError, XsResult};
 use xs_l1_sys::{
     DomainSpec, ExitStatus, L1Domain, NsFlags, PathGrant, SandboxCommand, SeccompAllowlist,
 };
@@ -31,7 +31,24 @@ impl Sandbox {
     }
 
     /// 在沙箱内运行命令并等待退出，返回退出状态。
+    ///
+    /// D2 修复（SP-G-01）：执行前判定审计通道可用性，不可用即拒绝执行
+    /// （no-record => no-execute 从接口声明变为执行语义）。
     pub fn run(&self, cmd: SandboxCommand) -> XsResult<ExitStatus> {
+        let sink = xs_core::TracingAuditSink;
+        if !sink.is_available() {
+            return Err(XsError::AuditUnavailable {
+                reason: "tracing subscriber 未初始化（INFO 级不可达），审计事件将丢失".to_string(),
+            });
+        }
+        // 记录执行事件（审计通道可用性已判定）
+        let event = xs_core::AuditEvent::new(
+            xs_core::AuditKind::CapabilityRequest,
+            None,
+            "sandbox",
+            format!("run {}", cmd.program.display()),
+        );
+        let _ = sink.record(&event)?;
         let pid = self.domain.spawn(&cmd)?;
         self.domain.wait(pid)
     }
@@ -82,16 +99,21 @@ pub fn build(config: &SandboxConfig) -> XsResult<Sandbox> {
     // 3. min_assurance 判定（SP-G-01：低于要求即拒绝）
     report.enforce(config.min_assurance)?;
 
-    // 4. 映射 DomainSpec 并自动放行调用进程的继承 fd（CLI/嵌入方 stdin/stdout/stderr + 终端连接等）
+    // 4. 映射 DomainSpec（D1 修复：fd 白名单严格为 stdio 三件套，SP-L1-04）
+    // 验证报告 D1 实证：此前无条件并入 /proc/self/fd 全部继承 fd，使
+    // 「白名单外不得继承 fd」退化为「宿主有什么就允许什么」，安全属性失效。
+    // 修复后白名单固定为 [0,1,2]；白名单外的继承 fd 由 prepare_in_child
+    // 第 5 步 check_fd_whitelist 检出并以 126 拒绝（fail-closed）。
+    // 调用方（CLI/嵌入方）若持有额外 fd，应在 build 前自行关闭或重定向。
+    //
+    // D4 修复：landlock 不可用（ABI 无 FS 能力）时 grants 置空（B 级降级路径）。
+    // 验证报告 D4 实证：无 landlock 内核上无条件注入路径授权导致必然执行失败。
+    // 降级语义：无文件路径隔离，namespace/seccomp/netns 仍全生效；
+    // min_assurance 判定（第 3 步）已保证降级仅在 B 级及以下配置时可达。
     let mut spec = map_spec(config);
-    let inherited: Vec<i32> = std::fs::read_dir("/proc/self/fd")
-        .map(|rd| {
-            rd.filter_map(std::result::Result::ok)
-                .filter_map(|e| e.file_name().to_string_lossy().parse::<i32>().ok())
-                .collect()
-        })
-        .unwrap_or_default();
-    spec.fd_whitelist.extend(inherited);
+    if !report.landlock_abi.has_fs() {
+        spec.grants = vec![];
+    }
 
     // 5. 建立域
     let domain = L1Domain::establish(spec)?;

@@ -165,6 +165,18 @@ min_assurance = "A-"
 allow_io_uring = false
 "#;
 
+    /// D2 修复配套：初始化 tracing subscriber（幂等，重复调用安全）。
+    /// Sandbox::run 的审计判定（no-record => no-execute）要求 subscriber 可用。
+    fn init_tracing() {
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                tracing_subscriber::EnvFilter::try_from_default_env()
+                    .unwrap_or_else(|_| "info".into()),
+            )
+            .with_target(false)
+            .try_init();
+    }
+
     fn true_cmd() -> xs_api::SandboxCommand {
         xs_api::SandboxCommand {
             program: PathBuf::from("/bin/true"),
@@ -193,6 +205,7 @@ allow_io_uring = false
     #[tokio::test]
     #[serial]
     async fn pool_acquire_run_release_chain() {
+        init_tracing();
         let pool = SandboxPool::new(PoolConfig::default());
         pool.warmup(1, "test-tenant", MINIMAL_CONFIG)
             .await
