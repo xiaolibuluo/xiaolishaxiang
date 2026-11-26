@@ -1,20 +1,11 @@
-fix: P0/P1 代码修复——seccomp 顺序契约与四层进程模型（D1/D2/D4/D5）
+fix(deps): 升级 prometheus 0.13→0.14 消除 protobuf RUSTSEC-2024-0437
 
-D5（SP-L1-06）：seccomp 安装从引导进程移至 worker 进程（四层模型）
-- prepare_in_child 拆分为 prepare_bootstrap（unshare→no_new_privs→landlock）
-  与 prepare_sandbox（seccomp TSYNC+fd 白名单），保留组合函数兼容集成测试
-- supervisor 四级进程模型：supervisor→bootstrap→reaper(PID 1)→worker(PID 2)
-  reaper fork worker 后 waitpid 回收，worker 装 seccomp 再 exec
-- 根因：sandbox_minimal allowlist 默认 EPERM 拒绝 clone/fork，
-  装过滤器后二次 fork 必然失败；worker 为 PID 2（非 init）可正常接收信号
-- ExitStatus::from_raw 新增 129-254 区间 Signal 回溯映射
+protobuf v2.28.0（不受控递归崩溃，中危）通过 prometheus v0.13.4 间接引入。
+prometheus 0.14.0 已将 protobuf 依赖升级到 v3.7.2（>=3.7.2 已修复该漏洞）。
 
-D1（SP-L1-04）：check_fd_whitelist 语义从拒绝执行改为主动 close 白名单外 fd
-- 关闭在 seccomp allowlist 内（SYS_close），顺序契约第 5 步合法
-- 继承 fd 不拒绝执行（否则 daemon 持 listener fd 时服务不可用）
+变更：xs-daemon/Cargo.toml 中 prometheus 版本约束 0.13→0.14
+自动升级：prometheus v0.13.4→v0.14.0、protobuf v2.28.0→v3.7.2
 
-D2：audit.rs is_available 改为真实判定 tracing subscriber 是否初始化
-D4：domain.rs grants 为空时跳过 landlock 建立（B 级降级路径）
-/ready 503：未就绪返回非 200（K8s readiness 探针语义修正）
+验证：cargo check + cargo test --workspace --locked 全绿，无 API 破坏性变更
 
-集成测试：fault_crash 7/7、l1_isolation_sp02_04 6/6（适配 D1 新语义）
+Severity: medium | CVE: RUSTSEC-2024-0437 (Dependabot alert #1)
